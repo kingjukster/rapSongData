@@ -1,0 +1,18 @@
+# Generated training data
+data/*.jsonl
+data/dataset_manifest.json
+data/*.zip
+data/*.tar
+data/*.tar.gz
+
+# Training outputs and local model artifacts
+artifacts/
+checkpoints/
+runs/
+wandb/
+tensorboard/
+
+# Local caches
+.cache/
+__pycache__/
+*.pyc

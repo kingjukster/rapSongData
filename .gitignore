@@ -1,0 +1,30 @@
+# Large local datasets and generated model data should not be uploaded by Flash builds.
+.env
+*.env
+data/*.csv
+data/*.parquet
+data/model_ready/*.csv
+data/model_ready/*.parquet
+model/data/*.jsonl
+model/data/dataset_manifest.json
+model/data/*.parquet
+model/data/*.manifest.json
+model/data_special_tokens/
+model/data_full_verses/
+model/data_hybrid_verses/
+model/reports/
+model/tmp_adapter_check/
+
+# Reports are local audit artifacts.
+reports/*.json
+reports/*.md
+
+# Local model outputs and caches.
+model/artifacts/
+model/checkpoints/
+model/runs/
+model/wandb/
+model/tensorboard/
+.flash/
+__pycache__/
+*.pyc

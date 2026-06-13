@@ -1,0 +1,39 @@
+{
+  "endpoint_name": "rap-lyrics-qlora-train-v6",
+  "gpu": "NVIDIA_GEFORCE_RTX_4090",
+  "workers": [
+    0,
+    1
+  ],
+  "execution_timeout_ms": 21600000,
+  "use_network_volume": false,
+  "volume_name": "rap-lyrics-model-cache",
+  "volume_size_gb": 100,
+  "datacenter": null,
+  "base_model": "Qwen/Qwen2.5-7B-Instruct",
+  "output_dir": "/tmp/rap-lyrics/adapters/qwen2.5-7b-rap-lora",
+  "hf_output_repo": "",
+  "hf_checkpoint_repo": "",
+  "checkpoint_upload_steps": 250,
+  "save_only_model_checkpoints": true,
+  "add_structural_special_tokens": false,
+  "resume_from_hf_checkpoint": "",
+  "dataset": {
+    "train_url": "",
+    "validation_url": "",
+    "text_field": "training_text"
+  },
+  "training": {
+    "max_steps": 50,
+    "num_train_epochs": 1,
+    "learning_rate": 0.0002,
+    "sequence_length": 1024,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "tokenize_num_proc": 4,
+    "dataloader_num_workers": 2
+  }
+}
