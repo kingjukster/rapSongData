@@ -727,7 +727,13 @@ def _build_generation_dataset(rows: List[dict], out_path: Path, args: argparse.N
             continue
         prompt = _default_generation_prompt(r)
         r["generation_prompt"] = prompt
+        training_text = (
+            "System: Generate original rap lyrics. Do not copy existing songs.\n"
+            f"User: {prompt}\n"
+            f"Assistant: {r['target_completion']}"
+        )
         out.append({
+            "training_text": training_text,
             "messages": [
                 {"role": "system", "content": "Generate original rap lyrics. Do not copy existing songs."},
                 {"role": "user", "content": prompt},
