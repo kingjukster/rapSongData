@@ -1,0 +1,15 @@
+# Install PyTorch with a CUDA build that matches your driver/GPU first if this
+# generic requirement does not select a CUDA wheel on your machine:
+#   https://pytorch.org/get-started/locally/
+torch
+transformers
+accelerate
+peft
+datasets
+bitsandbytes
+huggingface_hub
+sentencepiece
+protobuf
+python-dotenv
+polars
+requests

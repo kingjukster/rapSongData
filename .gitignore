@@ -5,6 +5,7 @@ data/*.csv
 data/*.parquet
 data/model_ready/*.csv
 data/model_ready/*.parquet
+data/cleaned/
 model/data/*.jsonl
 model/data/dataset_manifest.json
 model/data/*.parquet
@@ -18,6 +19,8 @@ model/tmp_adapter_check/
 # Reports are local audit artifacts.
 reports/*.json
 reports/*.md
+reports/*.csv
+reports/*.jsonl
 
 # Local model outputs and caches.
 model/artifacts/
@@ -26,5 +29,8 @@ model/runs/
 model/wandb/
 model/tensorboard/
 .flash/
+.venv/
+.cuda-venv/
+logs/
 __pycache__/
 *.pyc

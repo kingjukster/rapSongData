@@ -1,0 +1,40 @@
+curate:
+  input: data/raw/raw_lyrics.jsonl
+  output: data/processed/rap_sections_labeled.parquet
+  cache_file: .cache/rap_fast_pipeline_cache.json
+  min_quality_score: 0.35
+  min_word_count: 2
+  allow_non_english: false
+  label_provider: none
+  label_model: gpt-4.1-mini
+
+datasets:
+  run_dir: data/run_logs
+  generation_out: data/sft/rap_generation_sft.jsonl
+  mutation_out: data/sft/rap_mutation_sft.jsonl
+  preference_out: data/preferences/rap_quality_pairs.jsonl
+  include_risk: false
+  min_quality_score: 0.35
+
+train:
+  train_script: train_local_cuda.py
+  model: Qwen/Qwen2.5-7B-Instruct
+  run_dir: data/run_logs
+  num_train_epochs: 1
+  max_steps: 1000
+  learning_rate: 0.0002
+  per_device_train_batch_size: 1
+  gradient_accumulation_steps: 4
+  sequence_length: 768
+  use_8bit_adam: true
+  gradient_checkpointing: true
+  smoke: false
+
+generate:
+  model: Qwen/Qwen2.5-7B-Instruct
+  run_dir: data/run_logs/generation
+  max_new_tokens: 256
+  temperature: 0.85
+  top_p: 0.95
+  do_sample: true
+  bf16: true
