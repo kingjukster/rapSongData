@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as dt
+import hashlib
 import json
 import os
+import time
 import subprocess
 import sys
 from pathlib import Path
@@ -33,6 +36,47 @@ except ModuleNotFoundError:  # Flash imports from the project root.
 DEFAULT_CONFIG_PATH = Path("model/configs/runpod_flash_config.example.json")
 load_dotenv()
 STRUCTURAL_SPECIAL_TOKENS = ["<|verse_start|>", "<|verse_end|>", "<|bar_start|>"]
+_ALLOWED_BASE_MODELS = {
+    "qwen/qwen2.5-7b",
+    "qwen/qwen2.5-7b-instruct",
+}
+
+
+def validate_qwen25_7b_only(model_name: str, *, scope: str) -> str:
+    normalized = (model_name or "").split("@", 1)[0].strip().lower()
+    if normalized not in _ALLOWED_BASE_MODELS:
+        raise ValueError(
+            f"{scope} policy requires Qwen2.5-7B. "
+            f"Use Qwen/Qwen2.5-7B-Instruct or Qwen/Qwen2.5-7B. Received: {model_name!r}"
+        )
+    return normalized
+
+
+def configure_runtime(torch: Any) -> dict[str, object]:
+    try:
+        torch.set_float32_matmul_precision("high")
+        precision = "high"
+    except Exception:
+        precision = "unavailable"
+    if torch.cuda.is_available():
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+        try:
+            torch.backends.cuda.enable_flash_sdp(True)
+            torch.backends.cuda.enable_mem_efficient_sdp(True)
+            torch.backends.cuda.enable_math_sdp(True)
+        except Exception:
+            pass
+    return {
+        "float32_matmul_precision": precision,
+        "tf32_matmul": bool(torch.backends.cuda.matmul.allow_tf32),
+        "cudnn_benchmark": bool(torch.backends.cudnn.benchmark),
+        "bf16_supported": bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported()),
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "torch": torch.__version__,
+        "torch_cuda": torch.version.cuda,
+    }
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -158,6 +202,11 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
     )
 
     slack_webhook_url = job_config.get("slack_webhook_url") or os.getenv("SLACK_WEBHOOK_URL") or ""
+    run_command = ["runpod-flash", "train_qlora"]
+    run_started_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_started = time.perf_counter()
+    command_hash = hashlib.md5(json.dumps(job_config, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    runtime_cfg = configure_runtime(torch)
 
     dataset_cfg = job_config["dataset"]
     train_url = dataset_cfg.get("train_url")
@@ -184,8 +233,10 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
                     file.write(chunk)
 
     training_cfg = job_config["training"]
-    base_model = job_config["base_model"]
+    base_model = validate_qwen25_7b_only(job_config["base_model"], scope="Runpod Flash training")
     output_dir = job_config["output_dir"]
+    output_dir_path = Path(output_dir)
+    output_dir_path.mkdir(parents=True, exist_ok=True)
     text_field = dataset_cfg.get("text_field", "training_text")
     max_steps = int(training_cfg["max_steps"])
     hf_output_repo = job_config.get("hf_output_repo")
@@ -305,6 +356,7 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
             {"train_path": str(train_path), "validation_path": str(validation_path)},
         )
 
+        load_started_at = time.perf_counter()
         tokenizer = AutoTokenizer.from_pretrained(base_model, use_fast=True)
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -324,23 +376,45 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
             },
         )
 
-        quantization = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-            bnb_4bit_use_double_quant=True,
-        )
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model,
-            quantization_config=quantization,
-            device_map="auto",
-            torch_dtype=torch.bfloat16,
-        )
+        load_in_4bit = bool(training_cfg.get("load_in_4bit", True))
+        compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        model_kwargs: dict[str, Any] = {
+            "device_map": "auto",
+            "low_cpu_mem_usage": True,
+            "torch_dtype": compute_dtype,
+        }
+        if load_in_4bit:
+            model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_compute_dtype=compute_dtype,
+                bnb_4bit_use_double_quant=True,
+            )
+        else:
+            model_kwargs["torch_dtype"] = compute_dtype
+        model = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        load_seconds = time.perf_counter() - load_started_at
         if add_structural_special_tokens:
             model.resize_token_embeddings(len(tokenizer))
         model.config.use_cache = False
         model = prepare_model_for_kbit_training(model)
-        model.gradient_checkpointing_enable()
+        checkpoint_kwargs = training_cfg.get("gradient_checkpointing_kwargs")
+        if isinstance(checkpoint_kwargs, dict):
+            checkpoint_kwargs = dict(checkpoint_kwargs)
+        else:
+            checkpoint_kwargs = {}
+        checkpoint_kwargs.setdefault("use_reentrant", False)
+        if bool(training_cfg.get("gradient_checkpointing", True)):
+            try:
+                model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=checkpoint_kwargs)
+            except TypeError:
+                print("[runtime] WARNING: non-reentrant checkpointing unsupported; using default checkpointing.")
+                model.gradient_checkpointing_enable()
+        else:
+            if hasattr(model, "gradient_checkpointing_disable"):
+                model.gradient_checkpointing_disable()
         notify_slack(
             slack_webhook_url,
             "Rap LoRA base model loaded",
@@ -397,8 +471,10 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
             "learning_rate": float(training_cfg["learning_rate"]),
             "per_device_train_batch_size": int(training_cfg["per_device_train_batch_size"]),
             "gradient_accumulation_steps": int(training_cfg["gradient_accumulation_steps"]),
-            "bf16": True,
-            "gradient_checkpointing": True,
+            "bf16": bool(training_cfg.get("bf16", True)),
+            "fp16": not bool(training_cfg.get("bf16", True)),
+            "optim": str(training_cfg.get("optim", "paged_adamw_8bit")),
+            "gradient_checkpointing": bool(training_cfg.get("gradient_checkpointing", True)),
             "logging_steps": max(10, min(50, max_steps // 20)),
             "eval_strategy": "no",
             "save_steps": max(1, min(checkpoint_upload_steps, max_steps)),
@@ -412,6 +488,61 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
         if "save_only_model" in training_args_parameters:
             training_args_kwargs["save_only_model"] = bool(job_config.get("save_only_model_checkpoints", True))
         args = TrainingArguments(**training_args_kwargs)
+
+        class TrainingTimingCallback(TrainerCallback):
+            def __init__(
+                self,
+                *,
+                log_steps: int,
+                batch_size: int,
+                gradient_accumulation_steps: int,
+                torch_module: Any,
+            ) -> None:
+                self.log_steps = max(1, log_steps)
+                self.batch_size = batch_size
+                self.gradient_accumulation_steps = gradient_accumulation_steps
+                self.torch = torch_module
+                self.start_time = 0.0
+                self.last_time = 0.0
+                self.last_step = 0
+                self.records: list[dict[str, Any]] = []
+
+            def on_train_begin(self, args, state, control, **kwargs):  # noqa: ANN001
+                if self.torch.cuda.is_available():
+                    self.torch.cuda.reset_peak_memory_stats()
+                    self.torch.cuda.synchronize()
+                self.start_time = time.perf_counter()
+                self.last_time = self.start_time
+                self.last_step = int(state.global_step or 0)
+
+            def on_step_end(self, args, state, control, **kwargs):  # noqa: ANN001
+                step = int(state.global_step or 0)
+                if step <= 0:
+                    return
+                if step - self.last_step < self.log_steps and step < int(state.max_steps or step):
+                    return
+                if self.torch.cuda.is_available():
+                    self.torch.cuda.synchronize()
+                now = time.perf_counter()
+                interval_steps = max(1, step - self.last_step)
+                interval_seconds = max(now - self.last_time, 1e-9)
+                total_seconds = max(now - self.start_time, 1e-9)
+                interval_examples = interval_steps * self.batch_size * self.gradient_accumulation_steps
+                payload = {
+                    "step": f"{step}/{int(state.max_steps or 0)}",
+                    "interval_seconds": round(interval_seconds, 3),
+                    "seconds_per_step": round(interval_seconds / interval_steps, 4),
+                    "steps_per_second": round(interval_steps / interval_seconds, 4),
+                    "avg_steps_per_second": round(step / total_seconds, 4),
+                    "estimated_examples_per_second": round(interval_examples / interval_seconds, 3),
+                    "elapsed_minutes": round(total_seconds / 60, 2),
+                }
+                if self.torch.cuda.is_available():
+                    payload["memory_allocated_gb"] = round(self.torch.cuda.memory_allocated() / 1024**3, 2)
+                    payload["max_memory_allocated_gb"] = round(self.torch.cuda.max_memory_allocated() / 1024**3, 2)
+                self.records.append(dict(payload))
+                self.last_time = now
+                self.last_step = step
 
         class SlackProgressCallback(TrainerCallback):
             def __init__(self, webhook_url: str, progress_steps: int, total_steps: int) -> None:
@@ -498,7 +629,14 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
                     )
 
         progress_steps = int(job_config.get("slack_progress_steps") or max(50, max_steps // 10))
-        callbacks = []
+        callbacks = [
+            TrainingTimingCallback(
+                log_steps=int(training_cfg.get("timing_log_steps", 10)),
+                batch_size=int(training_cfg["per_device_train_batch_size"]),
+                gradient_accumulation_steps=int(training_cfg["gradient_accumulation_steps"]),
+                torch_module=torch,
+            )
+        ]
         if slack_webhook_url:
             callbacks.append(SlackProgressCallback(slack_webhook_url, progress_steps, max_steps))
         if hf_checkpoint_repo:
@@ -518,15 +656,78 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
             data_collator=collator,
             callbacks=callbacks,
         )
+        train_started = time.perf_counter()
         notify_slack(
             slack_webhook_url,
             "Rap LoRA trainer started",
             {"resume_from": str(resume_checkpoint_path) if resume_checkpoint_path else None},
         )
-        trainer.train(resume_from_checkpoint=str(resume_checkpoint_path) if resume_checkpoint_path else None)
+        train_output = trainer.train(resume_from_checkpoint=str(resume_checkpoint_path) if resume_checkpoint_path else None)
+        train_seconds = time.perf_counter() - train_started
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         remove_checkpoint_dirs(Path(output_dir))
         trainer.save_model(output_dir)
         tokenizer.save_pretrained(output_dir)
+        if torch.cuda.is_available():
+            peak_vram_gb = round(torch.cuda.max_memory_allocated() / 1024**3, 2)
+        else:
+            peak_vram_gb = None
+        timing_records = callbacks[0].records if callbacks else []
+        avg_seconds_per_step = (
+            round(sum(item["seconds_per_step"] for item in timing_records if "seconds_per_step" in item) / len(timing_records), 4)
+            if timing_records
+            else None
+        )
+        run_ended_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+        run_wall_seconds = round(time.perf_counter() - run_started, 2)
+        run_summary = {
+            "command": run_command,
+            "command_hash": command_hash,
+            "started_at": run_started_at,
+            "ended_at": run_ended_at,
+            "wall_seconds": run_wall_seconds,
+            "base_model": base_model,
+            "output_dir": str(output_dir),
+            "dataset": {"train_path": str(train_path), "validation_path": str(validation_path)},
+            "training_cfg": training_cfg,
+            "runtime": runtime_cfg,
+            "environment": {
+                "torch": torch.__version__,
+                "torch_cuda": torch.version.cuda,
+                "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+            },
+            "timing": {
+                "model_load_seconds": round(load_seconds, 2),
+                "train_seconds": round(train_seconds, 2),
+                "avg_seconds_per_step": avg_seconds_per_step,
+                "train_rows": len(dataset["train"]),
+                "validation_rows": len(dataset["validation"]),
+                "peak_vram_gb": peak_vram_gb,
+                "metrics": train_output.metrics if hasattr(train_output, "metrics") else {},
+            },
+            "timing_records": timing_records,
+        }
+        run_summary_json = output_dir_path / "run_summary.json"
+        run_summary_md = output_dir_path / "run_summary.md"
+        run_summary_json.write_text(json.dumps(run_summary, indent=2), encoding="utf-8")
+        run_summary_md.write_text(
+            "\n".join(
+                [
+                    "# Runpod Flash QLoRA Run Summary",
+                    "",
+                    f"- Command hash: {command_hash}",
+                    f"- Command: {' '.join(run_command)}",
+                    f"- Started: {run_started_at}",
+                    f"- Ended: {run_ended_at}",
+                    f"- Wall seconds: {run_wall_seconds}",
+                    f"- Train seconds: {run_summary['timing']['train_seconds']}",
+                    f"- Avg seconds/step: {avg_seconds_per_step}",
+                    f"- Peak VRAM (GB): {peak_vram_gb}",
+                ]
+            ),
+            encoding="utf-8",
+        )
 
         uploaded_adapter = None
         if hf_output_repo:
@@ -541,12 +742,26 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
 
         result = {
             "status": "complete",
+            "command": run_command,
+            "command_hash": command_hash,
             "base_model": base_model,
             "output_dir": output_dir,
             "hf_output_repo": hf_output_repo,
             "uploaded_adapter": uploaded_adapter,
             "train_rows": len(dataset["train"]),
             "validation_rows": len(dataset["validation"]),
+            "run_summary_json": str(run_summary_json),
+            "run_summary_md": str(run_summary_md),
+            "run_started_at": run_started_at,
+            "run_ended_at": run_ended_at,
+            "run_wall_seconds": run_wall_seconds,
+            "train_seconds": round(train_seconds, 2),
+            "model_load_seconds": round(load_seconds, 2),
+            "avg_seconds_per_step": avg_seconds_per_step,
+            "peak_vram_gb": peak_vram_gb,
+            "environment": run_summary["environment"],
+            "runtime": runtime_cfg,
+            "timing_records": timing_records,
             "cuda_device": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         }
         notify_slack(
@@ -554,9 +769,13 @@ async def train_qlora(job_config: dict[str, Any]) -> dict[str, Any]:
             "Rap LoRA training completed",
             {
                 "max_steps": max_steps,
+                "run_wall_seconds": run_wall_seconds,
+                "avg_seconds_per_step": avg_seconds_per_step,
+                "peak_vram_gb": peak_vram_gb,
                 "train_rows": len(dataset["train"]),
                 "validation_rows": len(dataset["validation"]),
                 "adapter": uploaded_adapter or output_dir,
+                "run_summary_json": str(run_summary_json),
             },
         )
         return result

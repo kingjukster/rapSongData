@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -56,6 +58,20 @@ BLOCKED_SLUR_TERMS = [
     "fag",
     "fags",
 ]
+_ALLOWED_BASE_MODELS = {
+    "qwen/qwen2.5-7b",
+    "qwen/qwen2.5-7b-instruct",
+}
+
+
+def validate_qwen25_7b_only(model_name: str, *, scope: str) -> str:
+    normalized = (model_name or "").split("@", 1)[0].strip().lower()
+    if normalized not in _ALLOWED_BASE_MODELS:
+        raise ValueError(
+            f"{scope} policy requires Qwen2.5-7B. "
+            f"Use Qwen/Qwen2.5-7B-Instruct or Qwen/Qwen2.5-7B. Received: {model_name!r}"
+        )
+    return normalized
 
 WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?")
 SLUR_RE = re.compile(
@@ -82,6 +98,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--block-slurs", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--prompts-file", type=Path, default=None)
     parser.add_argument("--title", default="Fixed Prompt Generation Eval")
+    parser.add_argument(
+        "--run-summary-md",
+        type=Path,
+        default=None,
+        help="Optional run_summary.md path for run metadata.",
+    )
+    parser.add_argument(
+        "--run-summary-json",
+        type=Path,
+        default=None,
+        help="Optional run_summary.json path for run metadata.",
+    )
+    parser.add_argument(
+        "--run-summary-dir",
+        type=Path,
+        default=None,
+        help="Directory to store run summary files.",
+    )
     return parser.parse_args()
 
 
@@ -246,6 +280,115 @@ def summarize_records(records: list[dict[str, object]]) -> dict[str, object]:
     }
 
 
+def write_run_summary(
+    *,
+    command: list[str],
+    command_hash: str,
+    run_started_at: str,
+    run_ended_at: str,
+    wall_seconds: float,
+    summary: dict[str, object],
+    records: list[dict[str, object]],
+    settings: dict[str, object],
+    env: dict[str, object],
+    args: argparse.Namespace,
+) -> tuple[Path, Path]:
+    summary_dir = args.run_summary_dir or args.output_jsonl.parent
+    run_summary_json = args.run_summary_json
+    run_summary_md = args.run_summary_md
+    summary_dir.mkdir(parents=True, exist_ok=True)
+
+    if run_summary_json is None:
+        run_summary_json = summary_dir / "run_summary.json"
+    if run_summary_md is None:
+        run_summary_md = run_summary_json.with_name("run_summary.md")
+    run_summary_log = summary_dir / "run_summary.log"
+    run_summary_json.parent.mkdir(parents=True, exist_ok=True)
+    run_summary_md.parent.mkdir(parents=True, exist_ok=True)
+
+    timings = [record.get("timing", {}) for record in records]
+    generated_tokens = [float(item.get("generated_tokens", 0)) for item in timings if isinstance(item.get("generated_tokens"), (int, float))]
+    generation_seconds = [float(item.get("generation_seconds", 0)) for item in timings if isinstance(item.get("generation_seconds"), (int, float))]
+    peak_memory = [
+        float(item["max_memory_allocated_gb"])
+        for item in timings
+        if isinstance(item.get("max_memory_allocated_gb"), (int, float))
+    ]
+
+    payload = {
+        "command": command,
+        "command_hash": command_hash,
+        "started_at": run_started_at,
+        "ended_at": run_ended_at,
+        "wall_seconds": wall_seconds,
+        "base_model": args.base_model,
+        "adapter_dir": str(args.adapter_dir),
+        "settings": settings,
+        "environment": env,
+        "records": len(records),
+        "summary": summary,
+        "output": {
+            "output_md": str(args.output_md),
+            "output_jsonl": str(args.output_jsonl),
+            "run_summary_json": str(run_summary_json),
+            "run_summary_md": str(run_summary_md),
+        },
+        "artifacts": {
+            "run_summary_json": str(run_summary_json),
+            "run_summary_md": str(run_summary_md),
+            "run_summary_log": str(run_summary_log),
+        },
+        "run_metrics": {
+            "total_generated_tokens": round(sum(generated_tokens), 2) if generated_tokens else 0.0,
+            "total_generation_seconds": round(sum(generation_seconds), 2) if generation_seconds else 0.0,
+            "avg_tokens_per_second": round(
+                sum(generated_tokens) / max(sum(generation_seconds), 1e-9),
+                4,
+            )
+            if generated_tokens and generation_seconds
+            else 0.0,
+            "peak_memory_gb": round(max(peak_memory), 4) if peak_memory else None,
+        },
+    }
+    run_summary_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    md_lines = [
+        "# Fixed Generation Run Summary",
+        "",
+        f"- Command: {' '.join(command)}",
+        f"- Started: {run_started_at}",
+        f"- Ended: {run_ended_at}",
+        f"- Wall seconds: {wall_seconds}",
+        f"- Base model: {args.base_model}",
+        f"- Adapter: {args.adapter_dir}",
+        f"- Output JSONL: {args.output_jsonl}",
+        "",
+        "## Settings",
+        "",
+        f"```json\n{json.dumps(settings, indent=2)}\n```",
+        "",
+        "## Environment",
+        "",
+        f"```json\n{json.dumps(env, indent=2)}\n```",
+        "",
+        "## Prompt adherence summary",
+        "",
+        f"```json\n{json.dumps(summary, indent=2)}\n```",
+    ]
+    run_summary_md.write_text("\n".join(md_lines), encoding="utf-8")
+    run_log_lines = [
+        f"run_started_at={run_started_at}",
+        f"command={json.dumps(command)}",
+        f"command_hash={command_hash}",
+        f"wall_seconds={wall_seconds}",
+        f"ended={run_ended_at}",
+        f"total_generated_tokens={payload['run_metrics'].get('total_generated_tokens', 0.0)}",
+        f"avg_tokens_per_second={payload['run_metrics'].get('avg_tokens_per_second', 0.0)}",
+        f"peak_memory_gb={payload['run_metrics'].get('peak_memory_gb')}",
+    ]
+    run_summary_log.write_text("\n".join(run_log_lines), encoding="utf-8")
+    return run_summary_json, run_summary_md
+
+
 def prompt_to_messages(prompt: str) -> list[dict[str, str]]:
     system = (
         "Write only original rap lyrics for the user's prompt. "
@@ -270,6 +413,11 @@ def main() -> None:
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     args = parse_args()
+    validate_qwen25_7b_only(args.base_model, scope="Fixed generation eval")
+    run_started_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_started = time.perf_counter()
+    command = [sys.executable, *sys.argv]
+    command_hash = hashlib.md5(" ".join(command).encode("utf-8")).hexdigest()
     args.output_md.parent.mkdir(parents=True, exist_ok=True)
     args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
@@ -328,6 +476,12 @@ def main() -> None:
         "load_in_4bit": args.load_in_4bit,
         "enable_thinking": not args.disable_thinking,
         "block_slurs": args.block_slurs,
+        "quantization": {
+            "mode": "4bit_nf4" if use_cuda and args.load_in_4bit else "fp16_fp32_fallback",
+            "compute_dtype": str(dtype),
+            "bnb_4bit_use_double_quant": bool(use_cuda and args.load_in_4bit),
+        },
+        "command_hash": command_hash,
     }
     env = {
         "runtime": runtime,
@@ -369,6 +523,13 @@ def main() -> None:
             inputs = {key: value.to(model.device) for key, value in inputs.items()}
 
         started_at = time.perf_counter()
+        if use_cuda:
+            torch.cuda.reset_peak_memory_stats()
+            torch.cuda.synchronize()
+            start_memory = torch.cuda.max_memory_allocated()
+        else:
+            start_memory = 0
+        prompt_token_count = int(inputs["input_ids"].shape[-1])
         with torch.inference_mode():
             output_ids = model.generate(
                 **inputs,
@@ -387,7 +548,8 @@ def main() -> None:
             torch.cuda.synchronize()
         generation_seconds = time.perf_counter() - started_at
 
-        generated_ids = output_ids[0][inputs["input_ids"].shape[-1] :]
+        input_length = int(inputs["input_ids"].shape[-1])
+        generated_ids = output_ids[0][input_length:]
         raw_text = tokenizer.decode(generated_ids, skip_special_tokens=False)
         generated_text = clean_text(raw_text)
         analysis = analyze_generation(prompt, generated_text)
@@ -396,9 +558,11 @@ def main() -> None:
             "generation_seconds": round(generation_seconds, 2),
             "generated_tokens": generated_tokens,
             "tokens_per_second": round(generated_tokens / max(generation_seconds, 1e-9), 2),
+            "prompt_tokens": prompt_token_count,
         }
         if use_cuda:
             timing["max_memory_allocated_gb"] = round(torch.cuda.max_memory_allocated() / 1024**3, 2)
+            timing["start_memory_allocated_gb"] = round(start_memory / 1024**3, 2)
         records.append(
             {
                 "index": index,
@@ -418,6 +582,52 @@ def main() -> None:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
 
     summary = summarize_records(records)
+    run_ended_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_wall_seconds = round(time.perf_counter() - run_started, 2)
+    run_summary_json, run_summary_md = write_run_summary(
+        command=command,
+        command_hash=command_hash,
+        run_started_at=run_started_at,
+        run_ended_at=run_ended_at,
+        wall_seconds=run_wall_seconds,
+        summary=summary,
+        records=records,
+        settings={
+            "max_new_tokens": args.max_new_tokens,
+            "min_new_tokens": args.min_new_tokens,
+            "temperature": args.temperature,
+            "top_p": args.top_p,
+            "top_k": args.top_k,
+            "repetition_penalty": args.repetition_penalty,
+            "no_repeat_ngram_size": args.no_repeat_ngram_size,
+            "seed": args.seed,
+            "base_model": args.base_model,
+            "adapter_path": str(args.adapter_dir),
+            "load_in_4bit": args.load_in_4bit,
+            "enable_thinking": not args.disable_thinking,
+            "disable_thinking": args.disable_thinking,
+            "block_slurs": args.block_slurs,
+            "quantization": {
+                "mode": "4bit_nf4" if use_cuda and args.load_in_4bit else "fp16_fp32_fallback",
+                "compute_dtype": str(dtype),
+                "bnb_4bit_use_double_quant": bool(use_cuda and args.load_in_4bit),
+            },
+            "prompts_file": str(args.prompts_file) if args.prompts_file else None,
+            "title": args.title,
+            "command_hash": command_hash,
+        },
+        env={
+            "runtime": runtime,
+            "model_load_seconds": round(load_seconds, 2),
+            "cuda_available": use_cuda,
+            "gpu": torch.cuda.get_device_name(0) if use_cuda else None,
+            "torch": torch.__version__,
+            "torch_cuda": torch.version.cuda,
+        },
+        args=args,
+    )
+    print(f"[summary] wrote run summary to {run_summary_json}")
+    print(f"[summary] wrote run summary markdown to {run_summary_md}")
 
     md_lines = [
         f"# {args.title}",

@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import datetime as dt
 import json
 import os
 import re
+import hashlib
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +68,47 @@ VERSE_START_TOKEN = "<|verse_start|>"
 VERSE_END_TOKEN = "<|verse_end|>"
 BAR_START_TOKEN = "<|bar_start|>"
 STRUCTURAL_SPECIAL_TOKENS = [VERSE_START_TOKEN, VERSE_END_TOKEN, BAR_START_TOKEN]
+_ALLOWED_BASE_MODELS = {
+    "qwen/qwen2.5-7b",
+    "qwen/qwen2.5-7b-instruct",
+}
+
+
+def validate_qwen25_7b_only(model_name: str, *, scope: str) -> str:
+    normalized = (model_name or "").split("@", 1)[0].strip().lower()
+    if normalized not in _ALLOWED_BASE_MODELS:
+        raise ValueError(
+            f"{scope} policy requires Qwen2.5-7B. "
+            f"Use Qwen/Qwen2.5-7B-Instruct or Qwen/Qwen2.5-7B. Received: {model_name!r}"
+        )
+    return normalized
+
+
+def configure_runtime(torch: Any) -> dict[str, object]:
+    try:
+        torch.set_float32_matmul_precision("high")
+        precision = "high"
+    except Exception:
+        precision = "unavailable"
+    if torch.cuda.is_available():
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+        torch.backends.cudnn.benchmark = True
+        try:
+            torch.backends.cuda.enable_flash_sdp(True)
+            torch.backends.cuda.enable_mem_efficient_sdp(True)
+            torch.backends.cuda.enable_math_sdp(True)
+        except Exception:
+            pass
+    return {
+        "float32_matmul_precision": precision,
+        "tf32_matmul": bool(torch.cuda.is_available() and torch.backends.cuda.matmul.allow_tf32),
+        "cudnn_benchmark": bool(torch.cuda.is_available() and torch.backends.cudnn.benchmark),
+        "bf16_supported": bool(torch.cuda.is_available() and torch.cuda.is_bf16_supported()),
+        "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        "torch_version": torch.__version__,
+        "torch_cuda": torch.version.cuda,
+    }
 
 
 def hf_token_for_remote() -> str:
@@ -110,11 +154,19 @@ async def generate_lyrics(job_config: dict[str, Any]) -> dict[str, Any]:
     from peft import PeftModel
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
-    base_model = job_config.get("base_model", "Qwen/Qwen2.5-7B-Instruct")
+    base_model = validate_qwen25_7b_only(
+        job_config.get("base_model", "Qwen/Qwen2.5-7B-Instruct"),
+        scope="Runpod Flash generation",
+    )
     adapter_repo = job_config["adapter_repo"]
     adapter_subfolder = job_config.get("adapter_subfolder") or None
     add_structural_special_tokens = bool(job_config.get("add_structural_special_tokens", False))
+    use_4bit = bool(job_config.get("load_in_4bit", True))
     slack_webhook_url = job_config.get("slack_webhook_url") or os.getenv("SLACK_WEBHOOK_URL") or ""
+    run_started_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_started = time.perf_counter()
+    run_hash = hashlib.md5(json.dumps(job_config, sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    run_summary_dir = job_config.get("run_summary_dir")
     notify_slack(
         slack_webhook_url,
         "Rap lyric generation started",
@@ -134,11 +186,13 @@ async def generate_lyrics(job_config: dict[str, Any]) -> dict[str, Any]:
     login(token=token, add_to_git_credential=False)
 
     try:
+        model_load_started = time.perf_counter()
         tokenizer, model, bad_words_ids = get_cached_generation_assets(
             base_model=base_model,
             adapter_repo=adapter_repo,
             adapter_subfolder=adapter_subfolder,
             add_structural_special_tokens=add_structural_special_tokens,
+            load_in_4bit=use_4bit,
             token=token,
             torch=torch,
             HfApi=HfApi,
@@ -146,30 +200,115 @@ async def generate_lyrics(job_config: dict[str, Any]) -> dict[str, Any]:
             AutoModelForCausalLM=AutoModelForCausalLM,
             AutoTokenizer=AutoTokenizer,
         )
+        model_load_seconds = time.perf_counter() - model_load_started
         batch = job_config.get("batch")
         if batch:
             samples = []
+            timing_records: list[dict[str, Any]] = []
+            prompt_tokens_total = 0
+            generated_tokens_total = 0
+            generation_seconds_total = 0.0
             for index, override in enumerate(batch, start=1):
                 sample_config = {**job_config, **override}
                 sample_config.pop("batch", None)
                 sample = generate_one_sample(sample_config, tokenizer, model, bad_words_ids, torch)
                 sample["batch_index"] = index
+                timing_records.append(sample.get("timing", {}))
+                prompt_tokens_total += int(sample.get("prompt_token_count", 0))
+                generated_tokens_total += int(sample.get("generated_token_count", 0))
+                generation_seconds_total += float(sample.get("timing", {}).get("generation_seconds", 0.0))
                 samples.append(sample)
             result = {
+                "command": ["runpod-flash", "generate_lyrics"],
+                "command_hash": run_hash,
                 "samples": samples,
+                "run_started_at": run_started_at,
+                "run_ended_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+                "run_wall_seconds": round(time.perf_counter() - run_started, 2),
                 "base_model": base_model,
                 "adapter_repo": adapter_repo,
                 "adapter_subfolder": adapter_subfolder,
+                "timing": {
+                    "model_load_seconds": round(model_load_seconds, 2),
+                    "total_generation_seconds": round(generation_seconds_total, 2),
+                    "total_generated_tokens": generated_tokens_total,
+                    "prompt_tokens_total": prompt_tokens_total,
+                    "avg_tokens_per_second": round(
+                        generated_tokens_total / max(generation_seconds_total, 1e-9),
+                        2,
+                    )
+                    if generated_tokens_total and generation_seconds_total
+                    else 0.0,
+                },
+                "timing_records": timing_records,
+                "runtime": configure_runtime(torch),
             }
         else:
             result = generate_one_sample(job_config, tokenizer, model, bad_words_ids, torch)
+            result["timing"]["model_load_seconds"] = round(model_load_seconds, 2)
             result.update(
                 {
+                    "command": ["runpod-flash", "generate_lyrics"],
+                    "command_hash": run_hash,
+                    "run_started_at": run_started_at,
+                    "run_ended_at": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+                    "run_wall_seconds": round(time.perf_counter() - run_started, 2),
+                    "runtime": configure_runtime(torch),
                     "base_model": base_model,
                     "adapter_repo": adapter_repo,
                     "adapter_subfolder": adapter_subfolder,
                 }
             )
+        if run_summary_dir:
+            run_summary_dir_path = Path(str(run_summary_dir))
+            run_summary_dir_path.mkdir(parents=True, exist_ok=True)
+            run_summary_json = run_summary_dir_path / "run_summary.json"
+            run_summary_md = run_summary_dir_path / "run_summary.md"
+            run_summary_log = run_summary_dir_path / "run_summary.log"
+            run_summary_json.write_text(json.dumps(result, indent=2), encoding="utf-8")
+            sample_count = len(result.get("samples", [result]))
+            run_summary_md.write_text(
+                "\n".join(
+                    [
+                        "# Runpod Flash Generation Run Summary",
+                        "",
+                        f"- Command: {' '.join(result['command'])}",
+                        f"- Command hash: {result['command_hash']}",
+                        f"- Started: {run_started_at}",
+                        f"- Ended: {result['run_ended_at']}",
+                        f"- Wall seconds: {result['run_wall_seconds']}",
+                        f"- Base model: {base_model}",
+                        f"- Adapter: {adapter_repo}",
+                        f"- Generated samples: {sample_count}",
+                        "- Timing:",
+                        f"  - Model load seconds: {result['timing']['model_load_seconds']}",
+                        f"  - Total generation seconds: {result['timing'].get('total_generation_seconds', result['timing'].get('generation_seconds', 0.0))}",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            run_summary_log.write_text(
+                "\n".join(
+                    [
+                        f"run_started_at={run_started_at}",
+                        f"command={json.dumps(result['command'])}",
+                        f"command_hash={result['command_hash']}",
+                        f"wall_seconds={result['run_wall_seconds']}",
+                        f"total_generated_tokens={result['timing'].get('total_generated_tokens', result['timing'].get('generated_token_count', 0))}",
+                        f"avg_tokens_per_second={result['timing'].get('avg_tokens_per_second', result['timing'].get('tokens_per_second', 0.0))}",
+                        f"ended={result['run_ended_at']}",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            result["run_summary_json"] = str(run_summary_json)
+            result["run_summary_md"] = str(run_summary_md)
+            result["run_summary_log"] = str(run_summary_log)
+            result["artifacts"] = {
+                "run_summary_json": str(run_summary_json),
+                "run_summary_md": str(run_summary_md),
+                "run_summary_log": str(run_summary_log),
+            }
         notify_slack(
             slack_webhook_url,
             "Rap lyric generation completed",
@@ -198,6 +337,7 @@ def get_cached_generation_assets(
     adapter_repo: str,
     adapter_subfolder: str | None,
     add_structural_special_tokens: bool,
+    load_in_4bit: bool,
     token: str,
     torch: Any,
     HfApi: Any,
@@ -224,16 +364,27 @@ def get_cached_generation_assets(
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model,
-        token=token,
-        torch_dtype=torch.float16,
-        device_map="auto",
-        low_cpu_mem_usage=True,
-    )
+    model_kwargs: dict[str, Any] = {
+        "token": token,
+        "device_map": "auto",
+        "low_cpu_mem_usage": True,
+    }
+    if load_in_4bit and torch.cuda.is_available():
+        from transformers import BitsAndBytesConfig
+
+        model_kwargs["quantization_config"] = BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+    else:
+        model_kwargs["torch_dtype"] = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+    model = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
     if added_tokens:
         model.resize_token_embeddings(len(tokenizer))
     model = PeftModel.from_pretrained(model, adapter_repo, **adapter_kwargs)
+    model.config.use_cache = True
     model.eval()
 
     bad_words_ids = []
@@ -306,7 +457,15 @@ def generate_one_sample(
     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
     seed = int(job_config.get("seed", 42))
     torch.manual_seed(seed)
-    with torch.no_grad():
+    prompt_token_count = int(inputs["input_ids"].shape[-1])
+    if torch.cuda.is_available():
+        torch.cuda.reset_peak_memory_stats()
+        torch.cuda.synchronize()
+        generation_start_memory = torch.cuda.max_memory_allocated()
+    else:
+        generation_start_memory = 0
+    generation_started = time.perf_counter()
+    with torch.inference_mode():
         output_ids = model.generate(
             **inputs,
             max_new_tokens=int(job_config.get("max_new_tokens", 180)),
@@ -321,6 +480,9 @@ def generate_one_sample(
             pad_token_id=tokenizer.eos_token_id,
             eos_token_id=tokenizer.eos_token_id,
         )
+    if torch.cuda.is_available():
+        torch.cuda.synchronize()
+    generation_seconds = time.perf_counter() - generation_started
 
     generated_ids = output_ids[0][inputs["input_ids"].shape[-1] :]
     raw_completion = tokenizer.decode(generated_ids, skip_special_tokens=False)
@@ -328,6 +490,15 @@ def generate_one_sample(
     lyrics = clean_generated_lyrics(text, max_lines=int(job_config.get("max_lines", 24)))
     if not lyrics:
         lyrics = clean_generated_lyrics(raw_completion, max_lines=int(job_config.get("max_lines", 24)))
+    generated_token_count = int(generated_ids.shape[-1])
+    timing = {
+        "generation_seconds": round(generation_seconds, 2),
+        "generated_token_count": generated_token_count,
+        "tokens_per_second": round(generated_token_count / max(generation_seconds, 1e-9), 2),
+    }
+    if torch.cuda.is_available():
+        timing["max_memory_allocated_gb"] = round(torch.cuda.max_memory_allocated() / 1024**3, 2)
+        timing["start_memory_allocated_gb"] = round(generation_start_memory / 1024**3, 2)
     if job_config.get("force_line_count", True):
         lyrics = force_line_count(
             lyrics,
@@ -338,7 +509,9 @@ def generate_one_sample(
         "lyrics": lyrics,
         "prompt": prompt,
         "raw_completion_preview": raw_completion[:1200],
-        "generated_token_count": int(generated_ids.numel()),
+        "prompt_token_count": prompt_token_count,
+        "generated_token_count": generated_token_count,
+        "timing": timing,
     }
 
 
@@ -600,7 +773,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repetition-penalty", type=float, default=1.35)
     parser.add_argument("--no-repeat-ngram-size", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--load-in-4bit", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--slack-webhook-url", default=None)
+    parser.add_argument(
+        "--run-summary-dir",
+        type=Path,
+        default=None,
+        help="Optional directory to write run_summary.json/md/log for generation runs.",
+    )
     parser.add_argument(
         "--batch-params-json",
         default=None,
@@ -641,6 +821,8 @@ async def main() -> None:
             "repetition_penalty": args.repetition_penalty,
             "no_repeat_ngram_size": args.no_repeat_ngram_size,
             "seed": args.seed,
+            "load_in_4bit": args.load_in_4bit,
+            "run_summary_dir": args.run_summary_dir,
             "slack_webhook_url": args.slack_webhook_url or slack_webhook_from_env(),
             "batch": batch,
         }

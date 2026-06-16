@@ -1,9 +1,9 @@
-"""Queue Stage 2 Qwen3 after the active Stage 2 Qwen2.5 run exits."""
+"""Queue Stage 2 Qwen2.5 runs after the active Stage 2 Qwen2.5 run exits."""
 
 from __future__ import annotations
 
-import datetime as dt
 import argparse
+import datetime as dt
 import json
 import os
 import subprocess
@@ -14,11 +14,10 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 QWEN25_DIR = REPO / "model/artifacts/stage2-qwen2.5-7b-cleaned-chunks-512-60m"
-QWEN3_DIR = REPO / "model/artifacts/stage2-qwen3-8b-cleaned-chunks-512-60m"
 WAIT_PID_FILE = QWEN25_DIR / "stage2_active_pid.txt"
-QUEUE_LOG = QWEN3_DIR / "stage2_queue.log"
-QUEUE_PID_FILE = QWEN3_DIR / "stage2_queue_pid.txt"
-COMMAND = [sys.executable, "-u", "scripts/run_stage2_qwen3_60m.py"]
+QUEUE_LOG = QWEN25_DIR / "stage2_queue.log"
+QUEUE_PID_FILE = QWEN25_DIR / "stage2_queue_pid.txt"
+COMMAND = [sys.executable, "-u", "scripts/run_stage2_qwen25_60m.py"]
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,7 +25,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--not-before",
         default=None,
-        help="Local ISO timestamp before which Qwen3 must not start, e.g. 2026-06-16T01:30:00.",
+        help="Local ISO timestamp before which the queued run must not start, e.g. 2026-06-16T01:30:00.",
     )
     return parser.parse_args()
 
@@ -36,7 +35,7 @@ def now() -> str:
 
 
 def log(event: str, **payload: object) -> None:
-    QWEN3_DIR.mkdir(parents=True, exist_ok=True)
+    QWEN25_DIR.mkdir(parents=True, exist_ok=True)
     with QUEUE_LOG.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps({"event": event, "time": now(), **payload}) + "\n")
 
@@ -77,7 +76,7 @@ def parse_not_before(value: str | None) -> dt.datetime | None:
 def main() -> int:
     args = parse_args()
     not_before = parse_not_before(args.not_before)
-    QWEN3_DIR.mkdir(parents=True, exist_ok=True)
+    QWEN25_DIR.mkdir(parents=True, exist_ok=True)
     QUEUE_PID_FILE.write_text(str(os.getpid()) + "\n", encoding="utf-8")
     log(
         "queue_started",
@@ -106,12 +105,12 @@ def main() -> int:
         time.sleep(60)
 
     started = dt.datetime.now()
-    log("qwen3_start", command=COMMAND)
+    log("qwen2.5_start", command=COMMAND)
     with QUEUE_LOG.open("a", encoding="utf-8", buffering=1) as handle:
         proc = subprocess.run(COMMAND, cwd=REPO, stdout=handle, stderr=handle, text=True)
     ended = dt.datetime.now()
     log(
-        "qwen3_end",
+        "qwen2.5_end",
         returncode=proc.returncode,
         wall_seconds=round((ended - started).total_seconds(), 2),
     )

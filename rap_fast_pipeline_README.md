@@ -12,6 +12,22 @@ python rap_fast_pipeline.py curate \
   --smoke
 ```
 
+### Safe path for raw `song_lyrics.csv` (recommended)
+
+For the original 9GB CSV source, run the CSV categorization + cleaning step first, then pipeline validation:
+
+```powershell
+.\scripts\run_rap_pipeline_from_csv_safe.ps1 -InputCsv data/song_lyrics.csv -IncludeRisk
+```
+
+That wrapper:
+- Builds `data/rap_english_clean_categorized_with_families.parquet`
+- Writes `data/cleaned/categorized_rap_corpus_cleaned.jsonl` via `clean_corpus`
+- Reuses existing cleaned artifacts when unchanged
+- Runs `run_rap_pipeline_validation.ps1` with smoke defaults
+
+Use `-PrepareOnly` to stop after corpus build.
+
 Outputs:
 - `data/processed/rap_sections_labeled.parquet`
 - `data/processed/rap_sections_labeled_stats.json`

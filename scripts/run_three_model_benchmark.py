@@ -33,20 +33,6 @@ STAGES = [
         "output_dir": "model/artifacts/three-model-1hr/qwen2.5-7b-cleaned-chunks-256-rerun",
         "title": "Three-Model 1hr Qwen2.5-7B Eval",
     },
-    {
-        "name": "qwen3-8b",
-        "base_model": "Qwen/Qwen3-8B",
-        "config": "model/configs/local_cuda_qwen3_8b_three_model_1hr.json",
-        "output_dir": "model/artifacts/three-model-1hr/qwen3-8b-cleaned-chunks-256",
-        "title": "Three-Model 1hr Qwen3-8B Eval",
-    },
-    {
-        "name": "gemma4-12b-it",
-        "base_model": "google/gemma-4-12B-it",
-        "config": "model/configs/local_cuda_gemma4_12b_three_model_1hr.json",
-        "output_dir": "model/artifacts/three-model-1hr/gemma4-12b-it-cleaned-chunks-64-smoke",
-        "title": "Three-Model 1hr Gemma4-12B-it Eval",
-    },
 ]
 
 
@@ -153,7 +139,9 @@ def summarize_generation(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def stage_generation_command(stage: dict[str, str], md_path: Path, jsonl_path: Path) -> list[str]:
+def stage_generation_command(
+    stage: dict[str, str], md_path: Path, jsonl_path: Path, summary_json: Path, summary_md: Path
+) -> list[str]:
     command = [
         sys.executable,
         "-u",
@@ -180,6 +168,10 @@ def stage_generation_command(stage: dict[str, str], md_path: Path, jsonl_path: P
         str(GENERATION_ARGS["no_repeat_ngram_size"]),
         "--seed",
         str(GENERATION_ARGS["seed"]),
+        "--run-summary-json",
+        str(summary_json),
+        "--run-summary-md",
+        str(summary_md),
         "--disable-thinking",
         "--title",
         stage["title"],
@@ -277,7 +269,15 @@ def main() -> None:
             safe_name = stage["name"].replace(".", "_").replace("-", "_")
             md_path = REPORTS / f"three_model_1hr_{safe_name}_generation.md"
             jsonl_path = REPORTS / f"three_model_1hr_{safe_name}_generation.jsonl"
-            gen_command = stage_generation_command(stage, md_path, jsonl_path)
+            run_summary_json = REPORTS / f"three_model_1hr_{safe_name}_generation_run_summary.json"
+            run_summary_md = REPORTS / f"three_model_1hr_{safe_name}_generation_run_summary.md"
+            gen_command = stage_generation_command(
+                stage,
+                md_path,
+                jsonl_path,
+                run_summary_json,
+                run_summary_md,
+            )
             if has_generation_outputs(jsonl_path, md_path):
                 stage_result["generation"] = reused_result(
                     gen_command,
@@ -288,6 +288,8 @@ def main() -> None:
                 stage_result["generation"] = run_command(gen_command, output_dir / "benchmark_generation.log")
             stage_result["generation_md"] = str(md_path.relative_to(REPO))
             stage_result["generation_jsonl"] = str(jsonl_path.relative_to(REPO))
+            stage_result["generation_summary_json"] = str(run_summary_json.relative_to(REPO))
+            stage_result["generation_summary_md"] = str(run_summary_md.relative_to(REPO))
             stage_result["generation_summary"] = summarize_generation(read_jsonl(jsonl_path))
             stage_result["gpu_after_generation"] = gpu_snapshot()
         else:
