@@ -1,0 +1,32 @@
+{
+  "name": "qwen3_4b_base_12line_v1",
+  "purpose": "Structural baseline for exact 12-line rap lyric generation.",
+  "model": {
+    "base_model": "Qwen/Qwen3-4B",
+    "adapter": null
+  },
+  "decoding": {
+    "temperature": 0.82,
+    "top_p": 0.9,
+    "top_k": 50,
+    "repetition_penalty": 1.16,
+    "no_repeat_ngram_size": 5,
+    "max_new_tokens": 320,
+    "load_in_4bit": true
+  },
+  "postprocess": {
+    "enforce_target_line_count": true,
+    "overlength_action": "trim_to_requested_line_count"
+  },
+  "retry_policy": {
+    "mode": "underlength_only",
+    "condition": "postprocessed_line_count < target_line_count",
+    "max_additional_attempts": 2,
+    "acceptance": "first retry whose postprocessed_line_count equals target_line_count"
+  },
+  "primary_eval": {
+    "prompt_set": "configs/prompts/qwen3_4b_12line_expanded_eval_prompts.json",
+    "samples": 600,
+    "metrics": "reports/qwen3_4b_base_no_adapter_12line_expanded_eval_line_enforced_retry2_metrics.json"
+  }
+}

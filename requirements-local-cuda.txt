@@ -11,5 +11,9 @@ huggingface_hub
 sentencepiece
 protobuf
 python-dotenv
+pandas
+pydantic
+PyYAML
+langdetect
 polars
 requests

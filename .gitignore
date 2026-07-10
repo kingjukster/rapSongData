@@ -1,36 +1,68 @@
-# Large local datasets and generated model data should not be uploaded by Flash builds.
+# Secrets
 .env
-*.env
-data/*.csv
-data/*.parquet
-data/model_ready/*.csv
-data/model_ready/*.parquet
-data/cleaned/
-model/data/*.jsonl
-model/data/dataset_manifest.json
-model/data/*.parquet
-model/data/*.manifest.json
-model/data_special_tokens/
-model/data_full_verses/
-model/data_hybrid_verses/
-model/reports/
-model/tmp_adapter_check/
+.env.*
+!.env.example
 
-# Reports are local audit artifacts.
-reports/*.json
-reports/*.md
-reports/*.csv
-reports/*.jsonl
-
-# Local model outputs and caches.
-model/artifacts/
-model/checkpoints/
-model/runs/
-model/wandb/
-model/tensorboard/
-.flash/
-.venv/
-.cuda-venv/
-logs/
+# Python, test, and notebook caches
 __pycache__/
-*.pyc
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.coverage*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Environments and local tool caches
+.venv/
+venv/
+.cuda-venv/
+/.cache/
+/.flash/
+
+# Generated datasets. Reproducibility inputs under data/prompts stay visible.
+/data/*.csv
+/data/*.parquet
+/data/raw/
+/data/external/
+/data/interim/
+/data/cleaned/
+/data/curation/
+/data/model_ready/
+/data/packaged/
+/data/preferences*/
+/data/processed/
+/data/run_logs/
+/data/sft*/
+/data/sweeps/
+/data/training/
+
+# Generated reports, experiment runs, and historical evidence snapshots
+/reports/
+/runs/
+/codex-autonomous-loop-evidence/
+/codex-autonomy-session-governance-*/
+/codex-bible/
+/docs/qwen3_rap_quality_autonomous_loop/advisor_transcripts/
+
+# Historical model outputs retained for existing manifests
+/model/artifacts/
+/model/checkpoints/
+/model/data/
+/model/data_full_verses/
+/model/data_hybrid_verses/
+/model/data_special_tokens/
+/model/reports/
+/model/runs/
+/model/tensorboard/
+/model/tmp_adapter_check/
+/model/wandb/
+
+# Runtime files
+logs/
+*.log
+*.err
+*.pid

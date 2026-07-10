@@ -15,9 +15,9 @@ REPO = Path(__file__).resolve().parents[1]
 BASE_MODEL = "Qwen/Qwen2.5-7B-Instruct"
 RUN_TITLE = "Stage 2 Qwen2.5 60-Minute Practical Benchmark"
 GENERATION_TITLE = "Stage 2 Qwen2.5 512 60m Generation Eval"
-CONFIG = Path("model/configs/local_cuda_qwen2_5_7b_stage2_512_60m.json")
+CONFIG = Path("configs/training/local_cuda_qwen2_5_7b_stage2_512_60m.json")
 OUTPUT_DIR = Path("model/artifacts/stage2-qwen2.5-7b-cleaned-chunks-512-60m")
-PROMPTS_FILE = Path("reports/stage2_fixed_prompts_12.txt")
+PROMPTS_FILE = Path("configs/prompts/stage2_fixed_prompts_12.txt")
 GEN_MD = Path("reports/stage2_qwen2_5_7b_512_60m_generation.md")
 GEN_JSONL = Path("reports/stage2_qwen2_5_7b_512_60m_generation.jsonl")
 

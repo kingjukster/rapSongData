@@ -7,7 +7,7 @@
     "test": 0.01
   },
   "random_seed": 42,
-  "architecture_seed_path": "model/configs/lyrical_architecture_seeds.json",
+  "architecture_seed_path": "configs/datasets/lyrical_architecture_seeds.json",
   "verse_section_source": "model/data/full_verse_sections.parquet",
   "section_verse_min_bars": 10,
   "section_verse_max_bars": 25,

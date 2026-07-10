@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from corpus_cleaning import (  # noqa: E402
+from rap_song_data.corpus.cleaning import (  # noqa: E402
     CorpusCleaningConfig,
     audit_records,
     classify_language,

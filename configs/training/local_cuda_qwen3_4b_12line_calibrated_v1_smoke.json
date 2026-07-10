@@ -1,0 +1,53 @@
+{
+  "base_model": "Qwen/Qwen3-4B",
+  "output_dir": "model/artifacts/qwen3-4b-12line-calibrated-v1-smoke",
+  "add_structural_special_tokens": false,
+  "dataset": {
+    "train_path": "data/training/qwen3_4b_12line_calibrated_v1/train.jsonl",
+    "validation_path": "data/training/qwen3_4b_12line_calibrated_v1/validation.jsonl",
+    "text_field": "training_text",
+    "format": "json",
+    "manifest_path": "data/training/qwen3_4b_12line_calibrated_v1/manifest.json",
+    "preview_path": "data/training/qwen3_4b_12line_calibrated_v1/preview.md",
+    "source_quality_sets": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/calibrated_quality_sets/summary.json"
+  },
+  "training": {
+    "max_steps": 120,
+    "max_wall_time_minutes": 25,
+    "num_train_epochs": 3,
+    "learning_rate": 0.0001,
+    "sequence_length": 1024,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 4,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "max_train_records": null,
+    "max_validation_records": null,
+    "subset_shuffle_seed": 20260703,
+    "tokenize_num_proc": 6,
+    "tokenized_cache_dir": "data/training/tokenized_cache/qwen3_4b_12line_calibrated_v1_seq1024",
+    "dataloader_num_workers": 0,
+    "dataloader_pin_memory": true,
+    "group_by_length": true,
+    "timing_log_steps": 10,
+    "save_steps": 60,
+    "save_total_limit": 2,
+    "gradient_checkpointing": false,
+    "gradient_checkpointing_kwargs": {
+      "use_reentrant": false
+    },
+    "bf16": true,
+    "load_in_4bit": true,
+    "allow_tf32": true,
+    "float32_matmul_precision": "high",
+    "cudnn_benchmark": true,
+    "attn_implementation": "sdpa",
+    "enable_flash_sdp": true,
+    "enable_mem_efficient_sdp": true,
+    "optim": "paged_adamw_8bit",
+    "max_grad_norm": 0.3,
+    "lr_scheduler_type": "cosine",
+    "warmup_ratio": 0.03
+  }
+}

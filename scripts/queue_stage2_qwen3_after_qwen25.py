@@ -14,7 +14,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 QWEN25_DIR = REPO / "model/artifacts/stage2-qwen2.5-7b-cleaned-chunks-512-60m"
-QWEN3_DIR = REPO / "model/artifacts/stage2-qwen3-8b-cleaned-chunks-512-60m"
+QWEN3_DIR = REPO / "model/artifacts/stage2-qwen3-4b-cleaned-chunks-512-60m"
 WAIT_PID_FILE = QWEN25_DIR / "stage2_active_pid.txt"
 QUEUE_LOG = QWEN3_DIR / "stage2_queue.log"
 QUEUE_PID_FILE = QWEN3_DIR / "stage2_queue_pid.txt"

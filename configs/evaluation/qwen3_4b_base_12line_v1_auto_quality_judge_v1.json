@@ -1,0 +1,61 @@
+{
+  "name": "qwen3_4b_base_12line_v1_auto_quality_judge_v1",
+  "baseline": "qwen3_4b_base_12line_v1",
+  "ranker_input": "reports/qwen3_4b_base_12line_v1_quality_ranked.jsonl",
+  "judge": {
+    "provider": "openai_compatible_chat_completions",
+    "model_env": "OPENAI_JUDGE_MODEL",
+    "temperature": 0.0,
+    "response_format": "json_object"
+  },
+  "selection": {
+    "top_count": 200,
+    "stratified_sample": 60,
+    "per_prompt_top_k": 8,
+    "structural_pass_only": true
+  },
+  "outputs": {
+    "top_auto_judged": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/top_100_auto_judged.md",
+    "disagreements": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/top_100_disagreements.md",
+    "borderline": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/top_100_borderline.md",
+    "manual_rank_app": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_30.html",
+    "manual_rank_results": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_results.json",
+    "manual_rank_summary": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_summary.md",
+    "manual_rank_summary_json": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_summary.json",
+    "manual_rank_auto_keep_app": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_auto_keep_30.html",
+    "manual_rank_auto_keep_results": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_auto_keep_results.json",
+    "manual_rank_auto_keep_summary": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_auto_keep_summary.md",
+    "manual_rank_auto_keep_summary_json": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_rank_auto_keep_summary.json",
+    "manual_calibration_summary": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_calibration_summary.md",
+    "manual_calibration_effect": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/manual_calibration_effect.md",
+    "calibrated_quality_sets": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/calibrated_quality_sets/summary.md",
+    "calibrated_usable_candidates": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/calibrated_quality_sets/usable_candidates.jsonl",
+    "calibrated_edit_candidates": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/calibrated_quality_sets/edit_candidates.jsonl",
+    "calibrated_reject_candidates": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/calibrated_quality_sets/reject_candidates.jsonl",
+    "manual_preference_pairs": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/calibrated_quality_sets/manual_preference_pairs.jsonl",
+    "per_prompt_winners": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/per_prompt_winners.md",
+    "metrics": "reports/qwen3_4b_base_12line_v1_auto_quality_judge/quality_judge_metrics.json"
+  },
+  "confidence_buckets": {
+    "auto_keep": "high heuristic plus high judge score",
+    "auto_reject": "low heuristic plus low judge score",
+    "needs_review": "disagreement or borderline score"
+  },
+  "manual_calibration": {
+    "version": "manual_audit_v1",
+    "preserve_auto_keep": true,
+    "calibrated_review_score": "combined_quality_score minus manual-audit penalties outside auto_keep",
+    "penalties": {
+      "low_heuristic_high_judge": 0.22,
+      "borderline_heuristic_high_judge": 0.08,
+      "issue_low_rhyme": 0.18,
+      "issue_weak_imagery": 0.1
+    }
+  },
+  "pairwise": {
+    "enabled": true,
+    "method": "per_prompt_king_of_the_hill",
+    "top_k_per_prompt": 8,
+    "winners_per_prompt": 3
+  }
+}

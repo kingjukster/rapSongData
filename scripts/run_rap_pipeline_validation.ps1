@@ -3,7 +3,7 @@ param(
   [Alias("Input")]
   [string]$InputPath = "data/raw/your_file.jsonl",
   [string]$Output = "data/processed/rap_sections_labeled.parquet",
-  [string]$RunDir = "data/run_logs",
+  [string]$RunDir = "runs/pipeline-validation",
   [string]$GenerationOut = "data/sft/rap_generation_sft.jsonl",
   [string]$MutationOut = "data/sft/rap_mutation_sft.jsonl",
   [string]$PreferenceOut = "data/preferences/rap_quality_pairs.jsonl",

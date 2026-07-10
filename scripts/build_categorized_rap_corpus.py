@@ -1,6 +1,6 @@
 """Build the categorized English rap corpus from the raw song lyrics CSV.
 
-The original artist category map lives in ``rap_songs_filter.ipynb``. This
+The original artist category map lives in ``notebooks/rap_songs_filter.ipynb``. This
 script reuses that map and makes the notebook workflow repeatable from the
 command line.
 """
@@ -25,7 +25,7 @@ from corpus_cleaning import CorpusCleaningConfig, clean_corpus
 
 
 DEFAULT_INPUT = Path("data/song_lyrics.csv")
-DEFAULT_NOTEBOOK = Path("rap_songs_filter.ipynb")
+DEFAULT_NOTEBOOK = Path("notebooks/rap_songs_filter.ipynb")
 DEFAULT_OUTPUT_DIR = Path("data")
 
 SCHEMA_OVERRIDES = {

@@ -2,24 +2,25 @@ curate:
   input: data/raw/raw_lyrics.jsonl
   output: data/processed/rap_sections_labeled.parquet
   cache_file: .cache/rap_fast_pipeline_cache.json
-  min_quality_score: 0.35
-  min_word_count: 2
+  min_quality_score: 0.70
+  min_word_count: 5
   allow_non_english: false
   label_provider: none
   label_model: gpt-4.1-mini
 
 datasets:
-  run_dir: data/run_logs
+  run_dir: runs/dataset-builds
   generation_out: data/sft/rap_generation_sft.jsonl
   mutation_out: data/sft/rap_mutation_sft.jsonl
   preference_out: data/preferences/rap_quality_pairs.jsonl
   include_risk: false
-  min_quality_score: 0.35
+  min_quality_score: 0.70
+  min_word_count: 5
 
 train:
-  train_script: train_local_cuda.py
+  train_script: rap_song_data.training.local_cuda
   model: Qwen/Qwen2.5-7B-Instruct
-  run_dir: data/run_logs
+  run_dir: runs/training
   num_train_epochs: 1
   max_steps: 1000
   learning_rate: 0.0002
@@ -32,7 +33,7 @@ train:
 
 generate:
   model: Qwen/Qwen2.5-7B-Instruct
-  run_dir: data/run_logs/generation
+  run_dir: runs/generation
   max_new_tokens: 256
   temperature: 0.85
   top_p: 0.95

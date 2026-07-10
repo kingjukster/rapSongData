@@ -1,0 +1,43 @@
+{
+  "name": "qwen3_4b_base_12line_v1_quality_ranker_v1",
+  "baseline": "qwen3_4b_base_12line_v1",
+  "local_only": true,
+  "structural_prefilter": {
+    "exact_line_match": true,
+    "slur_violations": 0,
+    "prompt_leakage": 0,
+    "incomplete_endings": 0,
+    "high_copy_similarity_hits": 0
+  },
+  "quality_weights": {
+    "theme_adherence": 0.2,
+    "scene_coherence": 0.15,
+    "ending_payoff": 0.15,
+    "specific_imagery": 0.15,
+    "rhyme_density": 0.1,
+    "cadence_line_shape": 0.1,
+    "originality_low_cliche": 0.1,
+    "grammar_naturalness": 0.05
+  },
+  "quality_tags": [
+    "generic_motivation",
+    "scene_drift",
+    "abstract_overload",
+    "weak_imagery",
+    "prose_line_shape",
+    "awkward_phrase",
+    "low_rhyme_density",
+    "weak_payoff",
+    "topic_thinning"
+  ],
+  "review_queue": {
+    "path": "reports/qwen3_4b_base_12line_v1_quality_review_queue.md",
+    "human_label_scale": {
+      "5": "Strong / usable as-is",
+      "4": "Good with minor edits",
+      "3": "Structurally valid but bland",
+      "2": "Weak / fixable",
+      "1": "Reject"
+    }
+  }
+}

@@ -1,0 +1,422 @@
+[
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about ambition after public failure. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about ambition after public failure. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about ambition after public failure. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about ambition after public failure. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about pressure, loyalty, and temptation. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "pressure, loyalty, and temptation",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about pressure, loyalty, and temptation. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "pressure, loyalty, and temptation",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about pressure, loyalty, and temptation. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "pressure, loyalty, and temptation",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about pressure, loyalty, and temptation. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "pressure, loyalty, and temptation",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about late-night city focus after a long shift. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "late-night city focus after a long shift",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about late-night city focus after a long shift. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "late-night city focus after a long shift",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about late-night city focus after a long shift. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "late-night city focus after a long shift",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about late-night city focus after a long shift. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "late-night city focus after a long shift",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about family pride and clean success. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "family pride and clean success",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about family pride and clean success. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "family pride and clean success",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about family pride and clean success. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "family pride and clean success",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about family pride and clean success. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "family pride and clean success",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about loneliness after a breakthrough. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "loneliness after a breakthrough",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about loneliness after a breakthrough. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "loneliness after a breakthrough",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about loneliness after a breakthrough. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "loneliness after a breakthrough",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about loneliness after a breakthrough. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "loneliness after a breakthrough",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about discipline, patience, and technical growth. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about discipline, patience, and technical growth. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about discipline, patience, and technical growth. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about discipline, patience, and technical growth. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about rebuilding a name after rumors. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "rebuilding a name after rumors",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about rebuilding a name after rumors. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "rebuilding a name after rumors",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about rebuilding a name after rumors. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "rebuilding a name after rumors",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about rebuilding a name after rumors. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "rebuilding a name after rumors",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about standing outside a closed corner store at 2 AM. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "standing outside a closed corner store at 2 AM",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about standing outside a closed corner store at 2 AM. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "standing outside a closed corner store at 2 AM",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about standing outside a closed corner store at 2 AM. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "standing outside a closed corner store at 2 AM",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about standing outside a closed corner store at 2 AM. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "standing outside a closed corner store at 2 AM",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about turning rejection into a sharper routine. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "turning rejection into a sharper routine",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about turning rejection into a sharper routine. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "turning rejection into a sharper routine",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about turning rejection into a sharper routine. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "turning rejection into a sharper routine",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about turning rejection into a sharper routine. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "turning rejection into a sharper routine",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about keeping promises while the city moves fast. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "keeping promises while the city moves fast",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about keeping promises while the city moves fast. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "keeping promises while the city moves fast",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about keeping promises while the city moves fast. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "keeping promises while the city moves fast",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about keeping promises while the city moves fast. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "keeping promises while the city moves fast",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about a first show in a half-empty room. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about a first show in a half-empty room. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about a first show in a half-empty room. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about a first show in a half-empty room. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about staying calm while friends chase shortcuts. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "staying calm while friends chase shortcuts",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about staying calm while friends chase shortcuts. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "staying calm while friends chase shortcuts",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about staying calm while friends chase shortcuts. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "staying calm while friends chase shortcuts",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about staying calm while friends chase shortcuts. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "staying calm while friends chase shortcuts",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing trust after a public mistake. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing trust after a public mistake",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing trust after a public mistake. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing trust after a public mistake",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing trust after a public mistake. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing trust after a public mistake",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about repairing trust after a public mistake. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing trust after a public mistake",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about walking home under elevated train tracks. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "walking home under elevated train tracks",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about walking home under elevated train tracks. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "walking home under elevated train tracks",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about walking home under elevated train tracks. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "walking home under elevated train tracks",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about walking home under elevated train tracks. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "walking home under elevated train tracks",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about choosing craft over clout during a slow year. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about choosing craft over clout during a slow year. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about choosing craft over clout during a slow year. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about choosing craft over clout during a slow year. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  }
+]

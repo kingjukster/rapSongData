@@ -1,0 +1,49 @@
+{
+  "base_model": "Qwen/Qwen3-4B",
+  "output_dir": "model/artifacts/stage2-qwen3-4b-cleaned-chunks-512-60m",
+  "add_structural_special_tokens": false,
+  "dataset": {
+    "train_path": "data/cleaned/chunked/categorized_rap_corpus_train_chunks.txt",
+    "validation_path": "data/cleaned/chunked/categorized_rap_corpus_validation_chunks.txt",
+    "text_field": "text",
+    "format": "text",
+    "cleaning_summary_path": "data/cleaned/corpus_cleaning_summary.json",
+    "cleaning_report_path": "reports/corpus_cleaning_report.md",
+    "cleaning_report_summary_path": "reports/corpus_cleaning_summary.json",
+    "chunk_manifest_path": "data/cleaned/chunked/cleaned_chunk_manifest.json"
+  },
+  "training": {
+    "max_steps": 3000,
+    "max_wall_time_minutes": 60,
+    "num_train_epochs": 1,
+    "learning_rate": 0.0002,
+    "sequence_length": 512,
+    "per_device_train_batch_size": 2,
+    "gradient_accumulation_steps": 2,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "max_train_records": 15000,
+    "max_validation_records": 300,
+    "subset_shuffle_seed": 20260616,
+    "tokenize_num_proc": 6,
+    "tokenized_cache_dir": "data/cleaned/tokenized_cache/stage2_qwen3_4b_seq512_subset15000",
+    "dataloader_num_workers": 0,
+    "timing_log_steps": 25,
+    "save_steps": 100,
+    "save_total_limit": 3,
+    "gradient_checkpointing": false,
+    "gradient_checkpointing_kwargs": {
+      "use_reentrant": false
+    },
+    "bf16": true,
+    "load_in_4bit": true,
+    "allow_tf32": true,
+    "float32_matmul_precision": "high",
+    "cudnn_benchmark": true,
+    "attn_implementation": "sdpa",
+    "enable_flash_sdp": true,
+    "enable_mem_efficient_sdp": true,
+    "optim": "paged_adamw_8bit"
+  }
+}

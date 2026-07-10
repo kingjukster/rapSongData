@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rap-song-data"
+version = "0.1.0"
+description = "Rap lyric corpus curation, training-data preparation, fine-tuning, and evaluation tools."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pandas>=2.0",
+  "pydantic>=2.0",
+  "PyYAML>=6.0",
+  "requests>=2.31",
+]
+
+[project.optional-dependencies]
+data = [
+  "langdetect>=1.0.9",
+  "polars>=1.0",
+]
+cuda = [
+  "accelerate",
+  "bitsandbytes",
+  "datasets",
+  "huggingface_hub",
+  "peft",
+  "protobuf",
+  "python-dotenv",
+  "sentencepiece",
+  "torch",
+  "transformers",
+]
+cloud = [
+  "python-dotenv",
+  "runpod-flash",
+]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+rap-pipeline = "rap_song_data.cli:main"
+rap-clean-corpus = "rap_song_data.corpus.cleaning:main"
+rap-build-training-data = "rap_song_data.datasets.training_data:main"
+rap-build-verse-sections = "rap_song_data.datasets.verse_sections:main"
+rap-train-local = "rap_song_data.training.local_cuda:main"
+rap-cuda-smoke = "rap_song_data.training.local_cuda_smoke:main"
+rap-generate-local = "rap_song_data.generation.local:main"
+rap-evaluate-generation = "rap_song_data.evaluation.remote_generation:main"
+rap-evaluate-fixed = "rap_song_data.evaluation.fixed_generation:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]

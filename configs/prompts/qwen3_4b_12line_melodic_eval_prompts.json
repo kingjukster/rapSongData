@@ -1,0 +1,72 @@
+[
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about ambition after public failure. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about pressure, loyalty, and temptation. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "pressure, loyalty, and temptation",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about late-night city focus after a long shift. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "late-night city focus after a long shift",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about family pride and clean success. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "family pride and clean success",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about loneliness after a breakthrough. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "loneliness after a breakthrough",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about discipline, patience, and technical growth. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about rebuilding a name after rumors. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "rebuilding a name after rumors",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about standing outside a closed corner store at 2 AM. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "standing outside a closed corner store at 2 AM",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about turning rejection into a sharper routine. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "turning rejection into a sharper routine",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about keeping promises while the city moves fast. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "keeping promises while the city moves fast",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  }
+]

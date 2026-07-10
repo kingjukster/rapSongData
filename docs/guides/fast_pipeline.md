@@ -1,11 +1,12 @@
-# rap_fast_pipeline usage
+# Fast pipeline usage
 
-The new pipeline is implemented in `rap_fast_pipeline.py`.
+Install the project in editable mode, then use the `rap-pipeline` command. The
+legacy `python rap_fast_pipeline.py` entry point remains available.
 
 ### 1) Curate lyrics into canonical schema
 
 ```bash
-python rap_fast_pipeline.py curate \
+rap-pipeline curate \
   --input data/raw/your_raw_dataset.jsonl \
   --output data/processed/rap_sections_labeled.parquet \
   --label-provider none \
@@ -20,7 +21,7 @@ Outputs:
 ### 2) Build three dataset products
 
 ```bash
-python rap_fast_pipeline.py build-datasets \
+rap-pipeline build-datasets \
   --input data/processed/rap_sections_labeled.parquet \
   --generation-out data/sft/rap_generation_sft.jsonl \
   --mutation-out data/sft/rap_mutation_sft.jsonl \
@@ -30,23 +31,23 @@ python rap_fast_pipeline.py build-datasets \
 ### Optional audit report
 
 ```bash
-python rap_fast_pipeline.py audit \
+rap-pipeline audit \
   --input data/processed/rap_sections_labeled.parquet \
-  --out data/reports/label_audit.md \
+  --out reports/label_audit.md \
   --samples-per-bucket 20
 ```
 
 ### 3) Quick smoke test then baseline run
 
 ```bash
-python rap_fast_pipeline.py train \
+rap-pipeline train \
   --train-file data/sft/rap_generation_sft.jsonl \
-  --run-dir data/run_logs \
+  --run-dir runs/training \
   --smoke
 
-python rap_fast_pipeline.py train \
+rap-pipeline train \
   --train-file data/sft/rap_generation_sft.jsonl \
-  --run-dir data/run_logs \
+  --run-dir runs/training \
   --max-steps 1000 \
   --sequence-length 768
 ```
@@ -54,10 +55,10 @@ python rap_fast_pipeline.py train \
 ### 4) Controlled generation with telemetry
 
 ```bash
-python rap_fast_pipeline.py generate \
+rap-pipeline generate \
   --model Qwen/Qwen2.5-7B-Instruct \
   --prompt-file path/to/prompt.txt \
-  --run-dir data/run_logs/generation
+  --run-dir runs/generation
 ```
 
 ### 5) Mandatory logs per run
