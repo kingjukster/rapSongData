@@ -1,6 +1,6 @@
 {
-  "base_model": "Qwen/Qwen3-8B",
-  "output_dir": "model/artifacts/qwen3-8b-rap-lora-cleaned-chunks-512-quick-50",
+  "base_model": "Qwen/Qwen2.5-7B-Instruct",
+  "output_dir": "model/artifacts/qwen2.5-7b-cleaned-chunks-512-quick-50",
   "add_structural_special_tokens": false,
   "dataset": {
     "train_path": "data/cleaned/chunked/categorized_rap_corpus_train_chunks.txt",

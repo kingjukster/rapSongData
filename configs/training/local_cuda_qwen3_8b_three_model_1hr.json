@@ -1,6 +1,6 @@
 {
-  "base_model": "Qwen/Qwen3-8B",
-  "output_dir": "model/artifacts/three-model-1hr/qwen3-8b-cleaned-chunks-256",
+  "base_model": "Qwen/Qwen2.5-7B-Instruct",
+  "output_dir": "model/artifacts/three-model-1hr/qwen2.5-7b-cleaned-chunks-256",
   "add_structural_special_tokens": false,
   "dataset": {
     "train_path": "data/cleaned/chunked/categorized_rap_corpus_train_chunks.txt",
@@ -26,7 +26,7 @@
     "max_validation_records": 300,
     "subset_shuffle_seed": 20260616,
     "tokenize_num_proc": 6,
-    "tokenized_cache_dir": "data/cleaned/tokenized_cache/three_model_qwen3_8b_seq256_subset15000",
+    "tokenized_cache_dir": "data/cleaned/tokenized_cache/three_model_qwen2_5_7b_seq256_subset15000",
     "dataloader_num_workers": 0,
     "timing_log_steps": 25,
     "save_steps": 160,

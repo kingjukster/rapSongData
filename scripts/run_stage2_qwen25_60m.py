@@ -20,7 +20,6 @@ OUTPUT_DIR = Path("model/artifacts/stage2-qwen2.5-7b-cleaned-chunks-512-60m")
 PROMPTS_FILE = Path("configs/prompts/stage2_fixed_prompts_12.txt")
 GEN_MD = Path("reports/stage2_qwen2_5_7b_512_60m_generation.md")
 GEN_JSONL = Path("reports/stage2_qwen2_5_7b_512_60m_generation.jsonl")
-
 GENERATION_ARGS = {
     "max_new_tokens": 180,
     "temperature": 0.78,
@@ -157,6 +156,8 @@ def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     (OUTPUT_DIR / "stage2_active_pid.txt").write_text(str(os.getpid()) + "\n", encoding="utf-8")
     train_command = [sys.executable, "-u", "model/train_local_cuda.py", "--config", str(CONFIG)]
+    gen_summary_json = OUTPUT_DIR / "generation_run_summary.json"
+    gen_summary_md = OUTPUT_DIR / "generation_run_summary.md"
     gen_command = [
         sys.executable,
         "-u",
@@ -185,6 +186,10 @@ def main() -> None:
         str(GENERATION_ARGS["no_repeat_ngram_size"]),
         "--seed",
         str(GENERATION_ARGS["seed"]),
+        "--run-summary-json",
+        str(gen_summary_json),
+        "--run-summary-md",
+        str(gen_summary_md),
         "--disable-thinking",
         "--title",
         GENERATION_TITLE,
@@ -220,6 +225,8 @@ def main() -> None:
         "generation": generation_result,
         "generation_md": str(GEN_MD),
         "generation_jsonl": str(GEN_JSONL),
+        "generation_summary_json": str(gen_summary_json),
+        "generation_summary_md": str(gen_summary_md),
         "generation_summary": summarize_generation(generation_records),
     }
     write_summary(summary)
