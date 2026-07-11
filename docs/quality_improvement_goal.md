@@ -14,7 +14,7 @@ coherence, rhyme, originality, and final-line payoff.
    requested/actual bar-count mismatches, or song/hash leakage across splits.
 3. The primary SFT target is exactly 12 lyric lines and matches evaluation prompt
    structure; bar-level continuation data is not silently mixed into this task.
-4. The calibrated set contains 100–300 genuinely human-reviewed examples, or the
+4. The calibrated set contains 100-300 genuinely human-reviewed examples, or the
    run remains blocked at the human-review gate without relabeling auto-judged
    examples as manual.
 5. Qwen3-4B runs use the same dataset and seed for 1-, 2-, and 3-epoch variants,
@@ -34,4 +34,27 @@ Training loss alone is not a selection criterion.
 
 ## Current phase
 
-Reproducibility freeze and dataset-gate audit.
+The reproducibility freeze and dataset audit are complete. The provenance-aware
+review queue, strict dataset builder, pinned 1/2/3-epoch training matrix, raw
+development/confirmation evaluation matrix, blinded comparison packet, and
+promotion gate are ready. Training is intentionally stopped at the human-review
+gate until at least 100 unique examples pass the attested rubric.
+
+## Active handoff
+
+1. Open `data/curation/qwen3_4b_12line_human_v1/manual_review.html` and complete
+   the blinded review queue.
+2. Export the review JSON from the app.
+3. Build the eligible dataset with `python scripts/build_human_12line_sft.py
+   --reviews <exported-review.json>`.
+4. Run `python scripts/run_quality_goal_training_matrix.py`. It refuses to
+   start unless provenance, human-review, split-leakage, line-count, truncation,
+   and held-out overlap gates pass.
+5. Run `python scripts/run_quality_goal_evaluation_matrix.py --stage
+   development`. Blind-review the resulting 96 four-model comparisons and pick
+   one adapter explicitly.
+6. Run confirmation with `--stage confirmation --winner e1` (or `e2`/`e3`),
+   resolve the blinded reviews with `scripts/resolve_quality_goal_eval_reviews.py`,
+   and run `scripts/evaluate_quality_goal_promotion.py`.
+
+No adapter is promoted unless every locked promotion gate passes.

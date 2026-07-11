@@ -142,6 +142,61 @@ def looks_like_oom(log_dir: Path) -> bool:
     )
 
 
+def training_summary_path(config: dict[str, Any]) -> Path:
+    output_dir = Path(config["output_dir"])
+    if not output_dir.is_absolute():
+        output_dir = REPO / output_dir
+    return output_dir / "training_summary.json"
+
+
+def assess_training_attempt(
+    *,
+    result: dict[str, Any],
+    config: dict[str, Any],
+    oom_detected: bool,
+) -> dict[str, Any]:
+    """Classify a trainer subprocess without mistaking partial work for success."""
+    summary_path = training_summary_path(config)
+    summary_status: str | None = None
+    summary_error: str | None = None
+    if summary_path.exists():
+        try:
+            summary = read_json(summary_path)
+            raw_status = summary.get("result", {}).get("status")
+            if isinstance(raw_status, str) and raw_status:
+                summary_status = raw_status
+        except (OSError, json.JSONDecodeError) as exc:
+            summary_error = f"{type(exc).__name__}: {exc}"
+
+    returncode = int(result["returncode"])
+    if returncode == 0 and summary_status == "complete_full_budget":
+        status = "complete_full_budget"
+        exit_code = 0
+    elif returncode == 0:
+        if summary_status:
+            status = summary_status
+        elif summary_error:
+            status = "invalid_training_summary"
+        else:
+            status = "missing_training_summary"
+        exit_code = 2
+    else:
+        status = summary_status if summary_status in {"partial_time_budget_reached", "incomplete"} else "failed"
+        exit_code = returncode if returncode > 0 else 1
+
+    return {
+        "status": status,
+        "exit_code": exit_code,
+        "success": returncode == 0 and status == "complete_full_budget",
+        "training_summary_path": str(summary_path),
+        "training_summary_status": summary_status,
+        "training_summary_error": summary_error,
+        # Only a subprocess that actually failed may trigger the auto-profile
+        # OOM fallback. A zero exit with an incomplete budget must stop instead.
+        "oom_fallback_eligible": returncode != 0 and oom_detected,
+    }
+
+
 def ensure_training_files(args: argparse.Namespace) -> dict[str, Any]:
     if args.skip_build:
         manifest_path = args.training_dir / "manifest.json"
@@ -253,14 +308,33 @@ def main() -> None:
         log_dir = args.run_dir / profile_name
         command = [sys.executable, "-u", str(TRAIN_SCRIPT), "--config", str(item["config_path"])]
         result = run_logged(command, log_dir=log_dir)
-        attempts.append({"profile": profile_name, **result, "oom": looks_like_oom(log_dir)})
+        oom_detected = looks_like_oom(log_dir)
+        assessment = assess_training_attempt(
+            result=result,
+            config=item["config"],
+            oom_detected=oom_detected,
+        )
+        attempts.append(
+            {
+                "profile": profile_name,
+                **result,
+                "oom": oom_detected,
+                **assessment,
+            }
+        )
         write_json(args.run_dir / "attempts.json", {"attempts": attempts})
-        if result["returncode"] == 0:
-            write_json(args.run_dir / "final_result.json", {"status": "complete", "attempts": attempts})
+        if assessment["success"]:
+            write_json(
+                args.run_dir / "final_result.json",
+                {"status": "complete_full_budget", "attempts": attempts},
+            )
             return
-        if not attempts[-1]["oom"] or args.profile != "auto":
-            write_json(args.run_dir / "final_result.json", {"status": "failed", "attempts": attempts})
-            raise SystemExit(result["returncode"])
+        if not assessment["oom_fallback_eligible"] or args.profile != "auto":
+            write_json(
+                args.run_dir / "final_result.json",
+                {"status": assessment["status"], "attempts": attempts},
+            )
+            raise SystemExit(assessment["exit_code"])
         print(f"[oom-fallback] {profile_name} failed with CUDA OOM; trying next profile.")
 
     write_json(args.run_dir / "final_result.json", {"status": "failed_all_profiles", "attempts": attempts})

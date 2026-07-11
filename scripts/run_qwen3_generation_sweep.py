@@ -16,12 +16,21 @@ import random
 import re
 import sys
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
 
 BASE_MODEL = "Qwen/Qwen3-4B"
+DEFAULT_MODEL_REVISION = "1cfa9a7208912126459214e8b04321603b3df60c"
 DEFAULT_ADAPTER = Path("model/artifacts/stage2-qwen3-4b-cleaned-chunks-512-60m")
+OUTPUT_PROMPT_METADATA_KEYS = (
+    "theme_id",
+    "instruction_family",
+    "prompt_family",
+    "evaluation_split",
+    "samples_per_model",
+)
 
 SYSTEM_PROMPT = (
     "Write only original rap lyrics for the user's prompt. Keep line breaks. "
@@ -100,10 +109,12 @@ WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?")
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-model", default=BASE_MODEL)
+    parser.add_argument("--model-revision", default=DEFAULT_MODEL_REVISION)
     parser.add_argument("--adapter-dir", type=Path, default=DEFAULT_ADAPTER)
-    parser.add_argument("--adapter", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--adapter", action=argparse.BooleanOptionalAction, default=False)
     parser.add_argument("--output-jsonl", type=Path, default=Path("data/sweeps/qwen3_4b_rebuild/sweep_raw.jsonl"))
     parser.add_argument("--summary-json", type=Path, default=Path("data/sweeps/qwen3_4b_rebuild/sweep_summary.json"))
+    parser.add_argument("--run-manifest", type=Path, default=None)
     parser.add_argument("--prompt-file", type=Path, default=None)
     parser.add_argument("--num-candidates", type=int, default=500)
     parser.add_argument("--batch-size", type=int, default=6)
@@ -126,11 +137,53 @@ def parse_args() -> argparse.Namespace:
         help="Additional generation attempts only when the postprocessed output is under the requested line count.",
     )
     parser.add_argument("--resume", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--strict-row-seeds",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Force batch size 1 so every recorded row seed is the seed actually used.",
+    )
     return parser.parse_args()
 
 
 def stable_id(parts: list[str]) -> str:
     return hashlib.sha1("\n".join(parts).encode("utf-8", errors="ignore")).hexdigest()[:16]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def generation_run_fingerprint(spec: dict[str, Any]) -> str:
+    encoded = json.dumps(spec, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def prepare_generation_run_manifest(
+    path: Path,
+    *,
+    spec: dict[str, Any],
+    resume: bool,
+    output_exists: bool,
+) -> str:
+    fingerprint = generation_run_fingerprint(spec)
+    if resume and output_exists:
+        if not path.exists():
+            raise RuntimeError(f"Resume refused because the generation run manifest is missing: {path}")
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing.get("fingerprint") != fingerprint or existing.get("spec") != spec:
+            raise RuntimeError("Resume refused because model, adapter, prompts, seeds, or decoding settings changed.")
+        return fingerprint
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"schema_version": 1, "fingerprint": fingerprint, "spec": spec}, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return fingerprint
 
 
 def build_prompt_bank() -> list[dict[str, Any]]:
@@ -201,6 +254,13 @@ def build_sweep_plan(prompt_bank: list[dict[str, Any]], *, num_candidates: int, 
             }
         )
     return plan
+
+
+def attach_prompt_metadata(record: dict[str, Any], plan_row: dict[str, Any]) -> dict[str, Any]:
+    for key in OUTPUT_PROMPT_METADATA_KEYS:
+        if key in plan_row:
+            record[key] = plan_row[key]
+    return record
 
 
 def prompt_to_messages(prompt: str) -> list[dict[str, str]]:
@@ -343,21 +403,41 @@ def configure_runtime(torch: Any) -> dict[str, Any]:
 
 
 def existing_ids(path: Path) -> set[str]:
+    return set(inspect_output_jsonl(path)["row_ids"])
+
+
+def inspect_output_jsonl(path: Path) -> dict[str, Any]:
     if not path.exists():
-        return set()
-    ids: set[str] = set()
+        return {"row_ids": [], "duplicate_row_ids": [], "malformed_rows": []}
+    row_ids: list[str] = []
+    malformed_rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
+        for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
             try:
                 payload = json.loads(line)
-            except json.JSONDecodeError:
+            except json.JSONDecodeError as exc:
+                malformed_rows.append({"line": line_number, "error": str(exc)})
                 continue
-            row_id = payload.get("row_id")
-            if isinstance(row_id, str):
-                ids.add(row_id)
-    return ids
+            if not isinstance(payload, dict) or not isinstance(payload.get("row_id"), str):
+                malformed_rows.append({"line": line_number, "error": "missing_string_row_id"})
+                continue
+            row_ids.append(payload["row_id"])
+    counts = Counter(row_ids)
+    return {
+        "row_ids": row_ids,
+        "duplicate_row_ids": sorted(row_id for row_id, count in counts.items() if count > 1),
+        "malformed_rows": malformed_rows,
+    }
+
+
+def prepare_output_jsonl(path: Path, *, resume: bool) -> set[str]:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not resume:
+        path.write_text("", encoding="utf-8")
+        return set()
+    return existing_ids(path)
 
 
 def is_oom(exc: BaseException) -> bool:
@@ -422,16 +502,69 @@ def main() -> None:
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is not available. This sweep is intended for local GPU generation.")
 
-    args.output_jsonl.parent.mkdir(parents=True, exist_ok=True)
     args.summary_json.parent.mkdir(parents=True, exist_ok=True)
     prompt_bank = load_prompt_bank(args.prompt_file)
-    plan = build_sweep_plan(prompt_bank, num_candidates=args.num_candidates, seed=args.seed)
-    done_ids = existing_ids(args.output_jsonl) if args.resume else set()
-    plan = [row for row in plan if row["row_id"] not in done_ids]
+    full_plan = build_sweep_plan(prompt_bank, num_candidates=args.num_candidates, seed=args.seed)
+    expected_ids = {row["row_id"] for row in full_plan}
+    run_manifest_path = args.run_manifest or args.output_jsonl.with_name(
+        f"{args.output_jsonl.stem}.run_manifest.json"
+    )
+    adapter_config = args.adapter_dir / "adapter_config.json"
+    adapter_weights = args.adapter_dir / "adapter_model.safetensors"
+    run_spec = {
+        "generator_source_sha256": sha256_file(Path(__file__)),
+        "base_model": args.base_model,
+        "model_revision": args.model_revision,
+        "adapter_enabled": args.adapter,
+        "adapter_dir": str(args.adapter_dir) if args.adapter else None,
+        "adapter_config_sha256": sha256_file(adapter_config) if args.adapter and adapter_config.exists() else None,
+        "adapter_weights_sha256": sha256_file(adapter_weights) if args.adapter and adapter_weights.exists() else None,
+        "prompt_file": str(args.prompt_file) if args.prompt_file else None,
+        "prompt_bank_sha256": hashlib.sha256(
+            json.dumps(prompt_bank, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest(),
+        "planned_row_ids_sha256": hashlib.sha256("\n".join(sorted(expected_ids)).encode("utf-8")).hexdigest(),
+        "num_candidates": args.num_candidates,
+        "seed": args.seed,
+        "strict_row_seeds": args.strict_row_seeds,
+        "max_input_tokens": args.max_input_tokens,
+        "max_new_tokens": args.max_new_tokens,
+        "temperature": args.temperature,
+        "top_p": args.top_p,
+        "top_k": args.top_k,
+        "repetition_penalty": args.repetition_penalty,
+        "no_repeat_ngram_size": args.no_repeat_ngram_size,
+        "disable_thinking": args.disable_thinking,
+        "block_slurs": args.block_slurs,
+        "enforce_target_line_count": args.enforce_target_line_count,
+        "underlength_retries": args.underlength_retries,
+        "load_in_4bit": args.load_in_4bit,
+    }
+    run_fingerprint = prepare_generation_run_manifest(
+        run_manifest_path,
+        spec=run_spec,
+        resume=args.resume,
+        output_exists=args.output_jsonl.exists(),
+    )
+    done_ids = prepare_output_jsonl(args.output_jsonl, resume=args.resume)
+    initial_output_audit = inspect_output_jsonl(args.output_jsonl)
+    if initial_output_audit["malformed_rows"] or initial_output_audit["duplicate_row_ids"]:
+        raise RuntimeError(f"Existing generation output is malformed or duplicated: {initial_output_audit}")
+    unexpected_existing = done_ids - expected_ids
+    if unexpected_existing:
+        raise RuntimeError(
+            f"Existing generation output contains {len(unexpected_existing)} row ids outside this plan. "
+            "Use --no-resume or a fresh path."
+        )
+    plan = [row for row in full_plan if row["row_id"] not in done_ids]
 
     load_started = time.perf_counter()
     tokenizer_source = args.adapter_dir if args.adapter else args.base_model
-    tokenizer = AutoTokenizer.from_pretrained(tokenizer_source, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer_source,
+        revision=None if args.adapter else args.model_revision,
+        use_fast=True,
+    )
     tokenizer.padding_side = "left"
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
@@ -447,7 +580,11 @@ def main() -> None:
         )
     else:
         model_kwargs["torch_dtype"] = dtype
-    model = AutoModelForCausalLM.from_pretrained(args.base_model, **model_kwargs)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.base_model,
+        revision=args.model_revision,
+        **model_kwargs,
+    )
     if len(tokenizer) != model.get_input_embeddings().weight.shape[0]:
         model.resize_token_embeddings(len(tokenizer))
     if args.adapter:
@@ -460,9 +597,13 @@ def main() -> None:
 
     generated = len(done_ids)
     batch_size = max(1, args.batch_size)
+    if args.strict_row_seeds and batch_size != 1:
+        print(f"[determinism] forcing batch_size=1 instead of {batch_size} for exact per-row seeds")
+        batch_size = 1
     started = time.perf_counter()
     settings = {
         "base_model": args.base_model,
+        "model_revision": args.model_revision,
         "adapter_dir": str(args.adapter_dir) if args.adapter else None,
         "adapter_enabled": args.adapter,
         "max_new_tokens": args.max_new_tokens,
@@ -476,6 +617,9 @@ def main() -> None:
         "enforce_target_line_count": args.enforce_target_line_count,
         "underlength_retries": args.underlength_retries,
         "load_in_4bit": args.load_in_4bit,
+        "strict_row_seeds": args.strict_row_seeds,
+        "run_fingerprint": run_fingerprint,
+        "effective_batch_size": batch_size,
     }
 
     def prompt_text_for(row: dict[str, Any]) -> str:
@@ -577,7 +721,8 @@ def main() -> None:
         while index < len(plan):
             current = plan[index : index + batch_size]
             try:
-                output_ids, input_width, batch_seconds = generate_for_rows(current, seed=args.seed + generated)
+                generation_seed = current[0]["seed"] if args.strict_row_seeds else args.seed + generated
+                output_ids, input_width, batch_seconds = generate_for_rows(current, seed=generation_seed)
             except RuntimeError as exc:
                 if is_oom(exc) and batch_size > 1:
                     torch.cuda.empty_cache()
@@ -671,6 +816,7 @@ def main() -> None:
                     "timing": accepted["timing"],
                     "settings": settings,
                 }
+                attach_prompt_metadata(record, row)
                 handle.write(json.dumps(record, ensure_ascii=False) + "\n")
                 generated += 1
             index += len(current)
@@ -690,16 +836,35 @@ def main() -> None:
                 )
 
     total_seconds = time.perf_counter() - started
+    final_output_audit = inspect_output_jsonl(args.output_jsonl)
+    final_ids = set(final_output_audit["row_ids"])
+    missing_ids = expected_ids - final_ids
+    unexpected_ids = final_ids - expected_ids
+    if (
+        final_output_audit["malformed_rows"]
+        or final_output_audit["duplicate_row_ids"]
+        or missing_ids
+        or unexpected_ids
+    ):
+        raise RuntimeError(
+            "Generation output does not exactly match the planned row-id set: "
+            f"missing={len(missing_ids)}, unexpected={len(unexpected_ids)}, "
+            f"duplicates={len(final_output_audit['duplicate_row_ids'])}, "
+            f"malformed={len(final_output_audit['malformed_rows'])}."
+        )
     summary = {
         "status": "complete",
         "base_model": args.base_model,
         "adapter_dir": str(args.adapter_dir) if args.adapter else None,
         "adapter_enabled": args.adapter,
         "output_jsonl": str(args.output_jsonl),
+        "run_manifest": str(run_manifest_path),
+        "run_fingerprint": run_fingerprint,
         "requested_candidates": args.num_candidates,
         "already_present_at_start": len(done_ids),
         "generated_this_run": len(plan),
         "total_expected_rows": args.num_candidates,
+        "unique_output_rows": len(final_ids),
         "load_seconds": round(load_seconds, 2),
         "generation_wall_seconds": round(total_seconds, 2),
         "generation_wall_minutes": round(total_seconds / 60.0, 2),

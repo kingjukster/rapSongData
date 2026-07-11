@@ -8,8 +8,10 @@ to ``model/artifacts``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import inspect
 import json
+import math
 import os
 import shutil
 import time
@@ -146,6 +148,92 @@ def load_json_if_exists(path: Path | None) -> dict[str, Any] | None:
         return None
     with path.open("r", encoding="utf-8") as file:
         return json.load(file)
+
+
+def sha256_file(path: Path | None) -> str | None:
+    if path is None or not path.exists() or not path.is_file():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def dataset_fingerprints(dataset_cfg: dict[str, Any]) -> dict[str, Any]:
+    paths = {
+        "train": Path(dataset_cfg["train_path"]),
+        "validation": Path(dataset_cfg["validation_path"]),
+        "manifest": Path(dataset_cfg["manifest_path"]) if dataset_cfg.get("manifest_path") else None,
+    }
+    return {
+        name: {"path": str(path) if path else None, "sha256": sha256_file(path)}
+        for name, path in paths.items()
+    }
+
+
+def find_subsequence_end(values: list[int], marker: list[int]) -> int | None:
+    if not marker or len(marker) > len(values):
+        return None
+    for index in range(len(values) - len(marker) + 1):
+        if values[index : index + len(marker)] == marker:
+            return index + len(marker)
+    return None
+
+
+def assistant_only_labels(input_ids: list[int], assistant_marker_ids: list[int]) -> list[int]:
+    marker_end = find_subsequence_end(input_ids, assistant_marker_ids)
+    if marker_end is None:
+        raise ValueError(
+            "assistant_only_loss is enabled but the assistant marker was not found before truncation"
+        )
+    if marker_end >= len(input_ids):
+        raise ValueError(
+            "assistant_only_loss is enabled but no supervised assistant tokens remain after the marker"
+        )
+    return [-100] * marker_end + list(input_ids[marker_end:])
+
+
+def resolve_max_steps(training_cfg: dict[str, Any]) -> int | None:
+    value = training_cfg.get("max_steps")
+    if value is None:
+        return None
+    steps = int(value)
+    return steps if steps > 0 else None
+
+
+def dataset_selection_cache_metadata(training_cfg: dict[str, Any]) -> dict[str, Any]:
+    """Return dataset-selection settings that materially affect tokenized rows."""
+    return {
+        "max_train_records": training_cfg.get("max_train_records"),
+        "max_validation_records": training_cfg.get("max_validation_records"),
+        "subset_shuffle_seed": training_cfg.get("subset_shuffle_seed"),
+    }
+
+
+def classify_training_completion(
+    *,
+    configured_max_steps: int | None,
+    requested_epochs: float,
+    global_step: int,
+    actual_epochs: float,
+    time_budget_triggered: bool,
+) -> tuple[str, str]:
+    """Classify whether the requested training budget was fully consumed."""
+    if configured_max_steps is not None:
+        reached_budget = global_step >= configured_max_steps
+        completed_reason = "max_steps_reached"
+        incomplete_reason = "stopped_before_max_steps"
+    else:
+        reached_budget = actual_epochs + 1e-6 >= requested_epochs
+        completed_reason = "epoch_target_reached"
+        incomplete_reason = "stopped_before_epoch_target"
+
+    if reached_budget:
+        return "complete_full_budget", completed_reason
+    if time_budget_triggered:
+        return "partial_time_budget_reached", "time_budget_reached"
+    return "incomplete", incomplete_reason
 
 
 def estimate_dataset_file(path: Path, dataset_format: str, text_field: str) -> dict[str, Any]:
@@ -429,15 +517,19 @@ def write_training_summary(
     *,
     output_dir: Path,
     base_model: str,
+    model_revision: str | None,
     dataset_cfg: dict[str, Any],
     training_cfg: dict[str, Any],
     result: dict[str, Any],
     timing_records: list[dict[str, Any]],
     corpus_log: dict[str, Any],
+    fingerprints: dict[str, Any],
+    tokenization_stats: dict[str, Any],
 ) -> Path:
     summary_path = output_dir / "training_summary.json"
     summary_payload = {
         "base_model": base_model,
+        "model_revision": model_revision,
         "output_dir": str(output_dir),
         "dataset": {
             "train_path": dataset_cfg["train_path"],
@@ -446,9 +538,11 @@ def write_training_summary(
             "max_train_records": training_cfg.get("max_train_records"),
             "max_validation_records": training_cfg.get("max_validation_records"),
             "subset_shuffle_seed": training_cfg.get("subset_shuffle_seed"),
+            "fingerprints": fingerprints,
         },
         "training": {
-            "max_steps": int(training_cfg["max_steps"]),
+            "max_steps": resolve_max_steps(training_cfg),
+            "num_train_epochs": float(training_cfg["num_train_epochs"]),
             "sequence_length": int(training_cfg["sequence_length"]),
             "per_device_train_batch_size": int(training_cfg["per_device_train_batch_size"]),
             "gradient_accumulation_steps": int(training_cfg["gradient_accumulation_steps"]),
@@ -458,8 +552,12 @@ def write_training_summary(
             "load_in_4bit": bool(training_cfg.get("load_in_4bit", True)),
             "bf16": bool(training_cfg.get("bf16", True)),
             "tokenized_cache_dir": training_cfg.get("tokenized_cache_dir"),
+            "assistant_only_loss": bool(training_cfg.get("assistant_only_loss", False)),
+            "seed": int(training_cfg.get("seed", 42)),
+            "data_seed": int(training_cfg.get("data_seed", training_cfg.get("seed", 42))),
         },
         "result": result,
+        "tokenization": tokenization_stats,
         "timing_summary": summarize_timing_records(timing_records),
         "corpus": corpus_log,
     }
@@ -484,9 +582,11 @@ def main() -> None:
             AutoTokenizer,
             BitsAndBytesConfig,
             DataCollatorForLanguageModeling,
+            DataCollatorForSeq2Seq,
             Trainer,
             TrainerCallback,
             TrainingArguments,
+            set_seed,
         )
     except ImportError as exc:
         raise SystemExit(
@@ -504,18 +604,25 @@ def main() -> None:
 
     dataset_cfg = config["dataset"]
     training_cfg = config["training"]
+    seed = int(training_cfg.get("seed", 42))
+    try:
+        set_seed(seed, deterministic=bool(training_cfg.get("full_determinism", False)))
+    except TypeError:  # Older Transformers releases do not expose deterministic=.
+        set_seed(seed)
     base_model = config["base_model"]
+    model_revision = config.get("model_revision")
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
     runtime_cfg = configure_torch_runtime(torch, training_cfg)
     corpus_log = corpus_training_log(dataset_cfg)
+    fingerprints = dataset_fingerprints(dataset_cfg)
     summary_source = corpus_log.get("summary_path")
     if summary_source:
         shutil.copyfile(summary_source, output_dir / "corpus_cleaning_summary.json")
 
     print(json.dumps({"cuda": cuda_summary(torch), "runtime": runtime_cfg, "base_model": base_model}, indent=2))
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model, use_fast=True)
+    tokenizer = AutoTokenizer.from_pretrained(base_model, revision=model_revision, use_fast=True)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -544,7 +651,7 @@ def main() -> None:
 
     try:
         try:
-            model = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
+            model = AutoModelForCausalLM.from_pretrained(base_model, revision=model_revision, **model_kwargs)
         except (TypeError, ValueError) as exc:
             if "attn_implementation" not in model_kwargs:
                 raise
@@ -553,7 +660,7 @@ def main() -> None:
                 "retrying model load with the model default attention implementation."
             )
             model_kwargs.pop("attn_implementation", None)
-            model = AutoModelForCausalLM.from_pretrained(base_model, **model_kwargs)
+            model = AutoModelForCausalLM.from_pretrained(base_model, revision=model_revision, **model_kwargs)
     except Exception as exc:
         if bool(training_cfg.get("load_in_4bit", True)):
             raise SystemExit(
@@ -589,14 +696,26 @@ def main() -> None:
     )
     dataset = apply_dataset_limits(dataset, training_cfg=training_cfg)
     sequence_length = int(training_cfg["sequence_length"])
+    use_assistant_only_loss = bool(training_cfg.get("assistant_only_loss", False))
+    assistant_marker_ids = tokenizer.encode("<|im_start|>assistant\n", add_special_tokens=False)
 
     def tokenize_batch(batch: dict[str, list[str]]) -> dict[str, Any]:
-        return tokenizer(
+        encoded = tokenizer(
             batch[text_field],
-            truncation=True,
-            max_length=sequence_length,
+            truncation=False,
             padding=False,
         )
+        original_lengths = [len(ids) for ids in encoded["input_ids"]]
+        encoded["input_ids"] = [ids[:sequence_length] for ids in encoded["input_ids"]]
+        encoded["attention_mask"] = [mask[:sequence_length] for mask in encoded["attention_mask"]]
+        if use_assistant_only_loss:
+            encoded["labels"] = [
+                assistant_only_labels(ids, assistant_marker_ids)
+                for ids in encoded["input_ids"]
+            ]
+        encoded["original_token_length"] = original_lengths
+        encoded["was_truncated"] = [length > sequence_length for length in original_lengths]
+        return encoded
 
     tokenized_cache_dir = training_cfg.get("tokenized_cache_dir")
     tokenized_cache_path = Path(tokenized_cache_dir) if tokenized_cache_dir else None
@@ -605,12 +724,17 @@ def main() -> None:
     )
     expected_cache_meta = {
         "base_model": base_model,
+        "model_revision": model_revision,
         "train_path": str(dataset_cfg["train_path"]),
         "validation_path": str(dataset_cfg["validation_path"]),
         "text_field": text_field,
         "dataset_format": dataset_format,
         "sequence_length": sequence_length,
         "tokenizer_length": len(tokenizer),
+        "assistant_only_loss": use_assistant_only_loss,
+        "fingerprints": fingerprints,
+        "dataset_selection": dataset_selection_cache_metadata(training_cfg),
+        "cache_schema_version": 2,
     }
     tokenized = None
     if tokenized_cache_path and tokenized_cache_path.exists() and tokenized_cache_meta_path:
@@ -637,6 +761,34 @@ def main() -> None:
                 json.dump(expected_cache_meta, file, indent=2)
                 file.write("\n")
 
+    tokenization_stats: dict[str, Any] = {}
+    for split_name in ("train", "validation"):
+        split_dataset = tokenized[split_name]
+        lengths = [int(value) for value in split_dataset["original_token_length"]]
+        truncated = sum(bool(value) for value in split_dataset["was_truncated"])
+        tokenization_stats[split_name] = {
+            "rows": len(split_dataset),
+            "min_tokens": min(lengths) if lengths else 0,
+            "max_tokens": max(lengths) if lengths else 0,
+            "mean_tokens": round(sum(lengths) / len(lengths), 2) if lengths else 0.0,
+            "truncated_rows": truncated,
+            "truncated_rate": round(truncated / len(lengths), 6) if lengths else 0.0,
+        }
+        removable = [
+            column
+            for column in ("original_token_length", "was_truncated")
+            if column in split_dataset.column_names
+        ]
+        if removable:
+            tokenized[split_name] = split_dataset.remove_columns(removable)
+    if bool(training_cfg.get("fail_on_truncation", False)):
+        truncated_total = sum(stats["truncated_rows"] for stats in tokenization_stats.values())
+        if truncated_total:
+            raise ValueError(
+                f"Tokenization truncated {truncated_total} rows at sequence_length={sequence_length}; "
+                "increase sequence_length for all comparison runs."
+            )
+
     lora_kwargs: dict[str, Any] = {
         "r": int(training_cfg["lora_rank"]),
         "lora_alpha": int(training_cfg["lora_alpha"]),
@@ -649,25 +801,50 @@ def main() -> None:
         lora_kwargs["trainable_token_indices"] = structural_token_ids
     model = get_peft_model(model, LoraConfig(**lora_kwargs))
 
+    configured_max_steps = resolve_max_steps(training_cfg)
+    requested_epochs = float(training_cfg["num_train_epochs"])
+    effective_batch_size = max(
+        1,
+        int(training_cfg["per_device_train_batch_size"])
+        * int(training_cfg["gradient_accumulation_steps"]),
+    )
+    estimated_epoch_steps = max(1, math.ceil(len(tokenized["train"]) / effective_batch_size))
+    estimated_total_steps = (
+        configured_max_steps
+        if configured_max_steps is not None
+        else max(1, math.ceil(estimated_epoch_steps * requested_epochs))
+    )
+    has_validation = len(tokenized["validation"]) > 0
+    eval_strategy = str(training_cfg.get("eval_strategy", "epoch" if has_validation else "no"))
+    save_strategy = str(training_cfg.get("save_strategy", "epoch"))
     training_args_kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
-        "max_steps": int(training_cfg["max_steps"]),
-        "num_train_epochs": float(training_cfg["num_train_epochs"]),
+        "num_train_epochs": requested_epochs,
         "learning_rate": float(training_cfg["learning_rate"]),
         "per_device_train_batch_size": int(training_cfg["per_device_train_batch_size"]),
+        "per_device_eval_batch_size": int(
+            training_cfg.get("per_device_eval_batch_size", training_cfg["per_device_train_batch_size"])
+        ),
         "gradient_accumulation_steps": int(training_cfg["gradient_accumulation_steps"]),
         "bf16": bool(training_cfg.get("bf16", True)),
         "fp16": not bool(training_cfg.get("bf16", True)),
         "gradient_checkpointing": bool(training_cfg.get("gradient_checkpointing", True)),
-        "logging_steps": max(10, min(50, int(training_cfg["max_steps"]) // 20)),
-        "eval_strategy": "no",
-        "save_steps": max(1, min(int(training_cfg.get("save_steps", 250)), int(training_cfg["max_steps"]))),
+        "logging_steps": int(training_cfg.get("logging_steps", max(1, min(10, estimated_total_steps // 10)))),
+        "eval_strategy": eval_strategy,
+        "save_strategy": save_strategy,
+        "save_steps": max(1, min(int(training_cfg.get("save_steps", 250)), estimated_total_steps)),
         "save_total_limit": int(training_cfg.get("save_total_limit", 2)),
         "save_safetensors": True,
+        "load_best_model_at_end": bool(training_cfg.get("load_best_model_at_end", False)),
+        "seed": seed,
+        "data_seed": int(training_cfg.get("data_seed", seed)),
+        "full_determinism": bool(training_cfg.get("full_determinism", False)),
         "report_to": [],
         "remove_unused_columns": False,
         "dataloader_num_workers": int(training_cfg.get("dataloader_num_workers", 0)),
     }
+    if configured_max_steps is not None:
+        training_args_kwargs["max_steps"] = configured_max_steps
     for optional_key in [
         "optim",
         "gradient_checkpointing_kwargs",
@@ -681,10 +858,13 @@ def main() -> None:
         "warmup_steps",
         "torch_empty_cache_steps",
         "torch_compile",
+        "eval_steps",
     ]:
         if optional_key in training_cfg:
             training_args_kwargs[optional_key] = training_cfg[optional_key]
     parameters = inspect.signature(TrainingArguments.__init__).parameters
+    if "eval_strategy" not in parameters and "evaluation_strategy" in parameters:
+        training_args_kwargs["evaluation_strategy"] = training_args_kwargs.pop("eval_strategy")
     training_args_kwargs = {
         key: value
         for key, value in training_args_kwargs.items()
@@ -807,12 +987,22 @@ def main() -> None:
     callbacks: list[TrainerCallback] = [timing_callback]
     if time_budget_callback.max_wall_time_seconds is not None:
         callbacks.append(time_budget_callback)
+    data_collator = (
+        DataCollatorForSeq2Seq(
+            tokenizer=tokenizer,
+            model=None,
+            padding=True,
+            label_pad_token_id=-100,
+        )
+        if use_assistant_only_loss
+        else DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+    )
     trainer = Trainer(
         model=model,
         args=TrainingArguments(**training_args_kwargs),
         train_dataset=tokenized["train"],
         eval_dataset=tokenized["validation"],
-        data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),
+        data_collator=data_collator,
         callbacks=callbacks,
     )
     train_started_at = time.perf_counter()
@@ -820,17 +1010,38 @@ def main() -> None:
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     train_seconds = time.perf_counter() - train_started_at
+    final_eval_metrics = (
+        trainer.evaluate()
+        if has_validation and eval_strategy.lower() not in {"no", "none"}
+        else {}
+    )
     trainer.save_model(str(output_dir))
     tokenizer.save_pretrained(str(output_dir))
 
+    actual_epochs = float(trainer.state.epoch or 0.0)
+    global_step = int(trainer.state.global_step or 0)
+    status, stop_reason = classify_training_completion(
+        configured_max_steps=configured_max_steps,
+        requested_epochs=requested_epochs,
+        global_step=global_step,
+        actual_epochs=actual_epochs,
+        time_budget_triggered=time_budget_callback.triggered,
+    )
+
     result = {
-        "status": "time_budget_reached" if time_budget_callback.triggered else "complete",
+        "status": status,
+        "stop_reason": stop_reason,
         "output_dir": str(output_dir),
         "train_rows": len(dataset["train"]),
         "validation_rows": len(dataset["validation"]),
         "train_runtime_seconds": round(train_seconds, 2),
         "train_runtime_minutes": round(train_seconds / 60, 2),
         "trainer_metrics": train_output.metrics,
+        "eval_metrics": final_eval_metrics,
+        "requested_epochs": requested_epochs,
+        "actual_epochs": round(actual_epochs, 6),
+        "requested_max_steps": configured_max_steps,
+        "global_step": global_step,
         "time_budget": {
             "max_wall_time_minutes": training_cfg.get("max_wall_time_minutes"),
             "triggered": time_budget_callback.triggered,
@@ -841,11 +1052,14 @@ def main() -> None:
     summary_path = write_training_summary(
         output_dir=output_dir,
         base_model=base_model,
+        model_revision=model_revision,
         dataset_cfg=dataset_cfg,
         training_cfg=training_cfg,
         result=result,
         timing_records=timing_callback.records,
         corpus_log=corpus_log,
+        fingerprints=fingerprints,
+        tokenization_stats=tokenization_stats,
     )
     result["summary_path"] = str(summary_path)
     print(f"[summary] wrote training summary to {summary_path}")

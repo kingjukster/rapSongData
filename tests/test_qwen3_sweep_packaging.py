@@ -43,6 +43,79 @@ class Qwen3SweepPackagingTests(unittest.TestCase):
         self.assertTrue(needs_underlength_retry(underlength, target_line_count=12))
         self.assertEqual(structural_failure_tags(underlength, target_line_count=12), ["fixable_underlength"])
 
+    def test_no_resume_truncates_generation_output(self):
+        from scripts.run_qwen3_generation_sweep import prepare_output_jsonl
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "generation.jsonl"
+            output.write_text(json.dumps({"row_id": "stale"}) + "\n", encoding="utf-8")
+
+            done = prepare_output_jsonl(output, resume=False)
+
+            self.assertEqual(done, set())
+            self.assertEqual(output.read_text(encoding="utf-8"), "")
+
+    def test_generation_output_audit_reports_duplicates_and_malformed_rows(self):
+        from scripts.run_qwen3_generation_sweep import inspect_output_jsonl
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "generation.jsonl"
+            output.write_text(
+                "\n".join(
+                    [
+                        json.dumps({"row_id": "same"}),
+                        json.dumps({"row_id": "same"}),
+                        "{broken",
+                        json.dumps({"not_row_id": "missing"}),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            audit = inspect_output_jsonl(output)
+
+            self.assertEqual(audit["duplicate_row_ids"], ["same"])
+            self.assertEqual(len(audit["malformed_rows"]), 2)
+
+    def test_generation_resume_manifest_rejects_changed_decoding(self):
+        from scripts.run_qwen3_generation_sweep import prepare_generation_run_manifest
+
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = Path(tmp) / "run_manifest.json"
+            spec = {"model_revision": "abc", "temperature": 0.8, "adapter": "e1"}
+            first = prepare_generation_run_manifest(manifest, spec=spec, resume=False, output_exists=False)
+            resumed = prepare_generation_run_manifest(manifest, spec=spec, resume=True, output_exists=True)
+            self.assertEqual(first, resumed)
+            with self.assertRaisesRegex(RuntimeError, "settings changed"):
+                prepare_generation_run_manifest(
+                    manifest,
+                    spec={**spec, "temperature": 0.9},
+                    resume=True,
+                    output_exists=True,
+                )
+
+    def test_quality_prompt_metadata_survives_sweep_plan(self):
+        from scripts.run_qwen3_generation_sweep import attach_prompt_metadata, build_sweep_plan
+
+        prompt = {
+            "prompt_key": "prompt-1",
+            "prompt": "Write exactly 12 lines.",
+            "theme_id": "theme-1",
+            "instruction_family": "continuous_scene",
+            "prompt_family": "quality_goal_continuous_scene",
+            "evaluation_split": "development",
+            "samples_per_model": 2,
+        }
+
+        row = build_sweep_plan([prompt], num_candidates=1, seed=17)[0]
+
+        for key, value in prompt.items():
+            self.assertEqual(row[key], value)
+        record = attach_prompt_metadata({"row_id": row["row_id"]}, row)
+        for key in ("theme_id", "instruction_family", "prompt_family", "evaluation_split", "samples_per_model"):
+            self.assertEqual(record[key], prompt[key])
+
     def test_cli_packages_annotated_sweep(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

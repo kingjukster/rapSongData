@@ -4,15 +4,26 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import html
 import json
 import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
 
 DEFAULT_REPORT_DIR = Path("reports/qwen3_4b_base_12line_v1_auto_quality_judge")
 DISAGREEMENT_ID_RE = re.compile(r"^##\s+\d+\.\s+([A-Za-z0-9_-]+)\s*$", re.M)
+RUBRIC_DIMENSIONS = [
+    "theme_adherence",
+    "specific_imagery",
+    "rhyme_cadence",
+    "originality",
+    "scene_coherence",
+    "naturalness",
+    "ending_payoff",
+]
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,15 +31,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--judge-dir", type=Path, default=DEFAULT_REPORT_DIR)
     parser.add_argument(
         "--source",
-        choices=["disagreements", "auto_keep", "needs_review", "auto_reject"],
+        choices=["disagreements", "auto_keep", "needs_review", "auto_reject", "quality_goal"],
         default="disagreements",
         help="Review set to build. Bucket sources are selected from judged_candidates.jsonl.",
     )
     parser.add_argument("--disagreements-md", type=Path, default=None)
     parser.add_argument("--judged-jsonl", type=Path, default=None)
+    parser.add_argument("--queue-jsonl", type=Path, default=None)
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--limit", type=int, default=30)
     parser.add_argument("--export-prefix", default=None, help="Download filename prefix for browser exports.")
+    parser.add_argument("--blind", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument("--rubric-version", default="rap_12line_quality_v1")
+    parser.add_argument("--review-session-id", default=None)
+    parser.add_argument("--app-version", default="manual_rank_v2")
     return parser.parse_args()
 
 
@@ -55,11 +71,15 @@ def candidate_payload(row: dict[str, Any], rank: int) -> dict[str, Any]:
     dimensions = row.get("quality_dimensions") if isinstance(row.get("quality_dimensions"), dict) else {}
     line_stats = row.get("line_length_stats") if isinstance(row.get("line_length_stats"), dict) else {}
     rhyme = row.get("rhyme_metrics") if isinstance(row.get("rhyme_metrics"), dict) else {}
+    lyrics = str(row.get("lyrics") or row.get("generated_text") or "")
+    normalized_lyrics = re.sub(r"\s+", " ", lyrics.lower()).strip()
     return {
         "candidate_id": row.get("candidate_id") or row.get("row_id"),
         "initial_rank": rank,
         "prompt": row.get("prompt"),
-        "lyrics": row.get("lyrics") or row.get("generated_text"),
+        "lyrics": lyrics,
+        "normalized_text_sha256": hashlib.sha256(normalized_lyrics.encode("utf-8")).hexdigest(),
+        "prompt_key": row.get("prompt_key"),
         "theme": row.get("theme"),
         "prompt_family": row.get("prompt_family"),
         "quality_score": row.get("quality_score"),
@@ -93,6 +113,8 @@ def candidate_payload(row: dict[str, Any], rank: int) -> dict[str, Any]:
             "end_rhyme_rate": rhyme.get("end_rhyme_rate"),
             "internal_rhyme_rate": rhyme.get("internal_rhyme_rate"),
         },
+        "queue_reason": row.get("queue_reason"),
+        "provenance": row.get("provenance") or {},
     }
 
 
@@ -116,13 +138,33 @@ def load_candidates(
     source: str,
     disagreements_md: Path | None,
     judged_jsonl: Path | None,
+    queue_jsonl: Path | None,
     limit: int,
 ) -> list[dict[str, Any]]:
     disagreements_md = disagreements_md or judge_dir / "top_100_disagreements.md"
     judged_jsonl = judged_jsonl or judge_dir / "judged_candidates.jsonl"
     judged_rows = read_jsonl(judged_jsonl)
     rows_by_id = {str(row.get("candidate_id") or row.get("row_id")): row for row in judged_rows}
-    if source == "disagreements":
+    if source == "quality_goal":
+        if queue_jsonl is None:
+            raise ValueError("--queue-jsonl is required when --source quality_goal")
+        queue_rows = read_jsonl(queue_jsonl)
+        ids = [str(row.get("candidate_id") or row.get("row_id")) for row in queue_rows[:limit]]
+        queue_by_id = {str(row.get("candidate_id") or row.get("row_id")): row for row in queue_rows}
+        missing = [candidate_id for candidate_id in ids if candidate_id not in rows_by_id]
+        if missing:
+            raise ValueError(f"Missing judged rows for quality-goal ids: {missing[:5]}")
+        rows = []
+        for candidate_id in ids:
+            merged = dict(rows_by_id[candidate_id])
+            merged.update(
+                {
+                    "queue_reason": queue_by_id[candidate_id].get("queue_reason"),
+                    "provenance": queue_by_id[candidate_id].get("provenance") or {},
+                }
+            )
+            rows.append(merged)
+    elif source == "disagreements":
         ids = disagreement_ids(disagreements_md)[:limit]
         missing = [candidate_id for candidate_id in ids if candidate_id not in rows_by_id]
         if missing:
@@ -144,14 +186,114 @@ def load_candidates(
     return [candidate_payload(row, rank=index + 1) for index, row in enumerate(rows)]
 
 
-def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_prefix: str) -> str:
+def current_commit() -> str | None:
+    result = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def app_source_sha256() -> str:
+    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+
+
+def review_target_fingerprint(
+    candidates: list[dict[str, Any]],
+    *,
+    rubric_version: str,
+    review_session_id: str,
+    app_version: str,
+    app_source_hash: str,
+) -> str:
+    target = {
+        "rubric_version": rubric_version,
+        "review_session_id": review_session_id,
+        "app_version": app_version,
+        "app_source_sha256": app_source_hash,
+        "candidates": [
+            {
+                "candidate_id": candidate.get("candidate_id"),
+                "normalized_text_sha256": candidate.get("normalized_text_sha256"),
+                "prompt_key": candidate.get("prompt_key"),
+            }
+            for candidate in candidates
+        ],
+    }
+    encoded = json.dumps(target, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def blinded_candidate_payload(candidate: dict[str, Any]) -> dict[str, Any]:
+    """Remove automated labels and scores from a self-contained blind-review file."""
+    return {
+        "candidate_id": candidate.get("candidate_id"),
+        "initial_rank": candidate.get("initial_rank"),
+        "prompt": candidate.get("prompt"),
+        "lyrics": candidate.get("lyrics"),
+        "normalized_text_sha256": candidate.get("normalized_text_sha256"),
+        "prompt_key": candidate.get("prompt_key"),
+        "theme": candidate.get("theme"),
+        "prompt_family": candidate.get("prompt_family"),
+        "quality_score": None,
+        "heuristic_5": None,
+        "combined_quality_score": None,
+        "confidence_bucket": None,
+        "quality_tags": [],
+        "judge": {
+            "overall_quality": None,
+            "usable_as_is": None,
+            "main_issue": None,
+            "short_reason": None,
+            "dimension_scores": {},
+        },
+        "structural": {},
+        "dimensions": {},
+        "line_stats": {},
+        "rhyme": {},
+        "queue_reason": None,
+        "provenance": candidate.get("provenance") or {},
+    }
+
+
+def build_html(
+    candidates: list[dict[str, Any]],
+    *,
+    review_set: str,
+    export_prefix: str,
+    blind: bool = False,
+    rubric_version: str = "rap_12line_quality_v1",
+    review_session_id: str = "manual-review",
+    app_version: str = "manual_rank_v2",
+    app_commit_sha: str | None = None,
+    app_source_hash: str | None = None,
+) -> str:
+    resolved_app_source_hash = app_source_hash or app_source_sha256()
+    target_fingerprint = review_target_fingerprint(
+        candidates,
+        rubric_version=rubric_version,
+        review_session_id=review_session_id,
+        app_version=app_version,
+        app_source_hash=resolved_app_source_hash,
+    )
+    embedded_candidates = [blinded_candidate_payload(candidate) for candidate in candidates] if blind else candidates
     data = {
         "title": "Qwen3 Manual Candidate Ranking",
         "source": "qwen3_4b_base_12line_v1_auto_quality_judge",
         "review_set": review_set,
         "export_prefix": export_prefix,
         "candidate_count": len(candidates),
-        "candidates": candidates,
+        "blind": blind,
+        "rubric_version": rubric_version,
+        "rubric_dimensions": RUBRIC_DIMENSIONS,
+        "review_session_id": review_session_id,
+        "app_version": app_version,
+        "app_commit_sha": app_commit_sha,
+        "app_source_sha256": resolved_app_source_hash,
+        "review_target_fingerprint": target_fingerprint,
+        "candidates": embedded_candidates,
     }
     data_json = html.escape(json.dumps(data, ensure_ascii=False), quote=False)
     return f"""<!doctype html>
@@ -412,7 +554,7 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       flex-direction: column;
       gap: 8px;
       min-height: 0;
-      overflow: hidden;
+      overflow: auto;
       padding: 10px;
     }}
     .review-section {{
@@ -432,6 +574,11 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
     .rating-grid button.selected {{ background: var(--accent); color: white; border-color: var(--accent); }}
     .decision-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }}
     .decision-grid button.selected {{ background: #263238; color: white; border-color: #263238; }}
+    .dimension-grid {{ display: grid; grid-template-columns: 1fr 76px; gap: 5px 8px; align-items: center; }}
+    .dimension-grid label {{ font-size: 11px; color: var(--muted); }}
+    .provenance-grid {{ display: grid; gap: 6px; }}
+    .attestation {{ display: flex; gap: 7px; align-items: flex-start; font-size: 11px; line-height: 1.3; }}
+    .attestation input {{ width: auto; margin-top: 2px; }}
     .move-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }}
     .nav-grid {{ display: grid; grid-template-columns: repeat(2, 1fr); gap: 5px; margin-bottom: 8px; }}
     .review-notes {{
@@ -510,8 +657,21 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
     </main>
     <aside class="review">
       <div class="review-section">
+        <h3>Review Provenance</h3>
+        <div class="provenance-grid">
+          <input id="reviewerId" placeholder="Stable reviewer ID or pseudonym">
+          <input id="sessionNote" placeholder="Optional session note">
+          <label class="attestation"><input id="humanAttested" type="checkbox">I attest that these labels are entered by a human reviewer using rubric <span id="rubricVersion"></span>.</label>
+        </div>
+      </div>
+      <div class="review-section">
         <h3>Manual Rating</h3>
         <div class="rating-grid" id="ratingButtons"></div>
+      </div>
+      <div class="review-section">
+        <h3>Quality Dimensions</h3>
+        <div class="dimension-grid" id="dimensionRatings"></div>
+        <input id="issueTags" placeholder="Issue tags, comma-separated" style="margin-top:7px">
       </div>
       <div class="review-section">
         <h3>Decision</h3>
@@ -533,7 +693,11 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       </div>
       <div class="review-section review-notes">
         <h3>Notes</h3>
-        <textarea id="notes" placeholder="Why this rank? What should change?"></textarea>
+        <textarea id="notes" placeholder="Required for edit/drop or any dimension rated 1–2."></textarea>
+      </div>
+      <div class="review-section review-notes">
+        <h3>Edited Lyrics (optional)</h3>
+        <textarea id="editedLyrics" placeholder="An edit needs a second review before training eligibility."></textarea>
       </div>
       <div class="review-section review-reason">
         <h3>Current Candidate</h3>
@@ -545,13 +709,31 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
   <script>
     const payload = JSON.parse(document.getElementById('candidateData').textContent);
     const candidates = payload.candidates;
-    const storageKey = 'qwen3-manual-rank-' + payload.source + '-' + payload.review_set + '-' + candidates.map(c => c.candidate_id).join('-').slice(0, 80);
+    const storageKey = 'qwen3-manual-rank-' + payload.review_target_fingerprint;
+    const blankDimensions = () => Object.fromEntries(payload.rubric_dimensions.map(name => [name, null]));
+    const blankReview = () => ({{
+      rating: null,
+      decision: '',
+      notes: '',
+      edited_lyrics: '',
+      issue_tags: [],
+      dimensions: blankDimensions(),
+      reviewed_at: null,
+      active_seconds: 0
+    }});
     const defaultState = () => ({{
       order: candidates.map(c => c.candidate_id),
-      reviews: Object.fromEntries(candidates.map(c => [c.candidate_id, {{ rating: null, decision: '', notes: '' }}]))
+      reviews: Object.fromEntries(candidates.map(c => [c.candidate_id, blankReview()])),
+      session: {{
+        reviewer_id: '',
+        human_attested: false,
+        session_note: '',
+        started_at: new Date().toISOString()
+      }}
     }});
     let state = loadState();
     let selectedId = state.order[0];
+    let selectedAt = performance.now();
     let draggedId = null;
 
     const byId = new Map(candidates.map(c => [c.candidate_id, c]));
@@ -564,7 +746,14 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
           const known = new Set(candidates.map(c => c.candidate_id));
           saved.order = saved.order.filter(id => known.has(id));
           for (const c of candidates) if (!saved.order.includes(c.candidate_id)) saved.order.push(c.candidate_id);
-          for (const c of candidates) saved.reviews[c.candidate_id] ||= {{ rating: null, decision: '', notes: '' }};
+          saved.session ||= defaultState().session;
+          for (const c of candidates) {{
+            saved.reviews[c.candidate_id] ||= blankReview();
+            saved.reviews[c.candidate_id].dimensions ||= blankDimensions();
+            saved.reviews[c.candidate_id].edited_lyrics ||= '';
+            saved.reviews[c.candidate_id].issue_tags ||= [];
+            saved.reviews[c.candidate_id].active_seconds ||= 0;
+          }}
           return saved;
         }}
       }} catch {{}}
@@ -574,7 +763,17 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       localStorage.setItem(storageKey, JSON.stringify(state));
       updateProgress();
     }}
-    function review(id) {{ return state.reviews[id] ||= {{ rating: null, decision: '', notes: '' }}; }}
+    function review(id) {{ return state.reviews[id] ||= blankReview(); }}
+    function touchReview(id) {{
+      review(id).reviewed_at = new Date().toISOString();
+    }}
+    function reviewComplete(id) {{
+      const r = review(id);
+      return Boolean(
+        r.rating && r.decision
+        && payload.rubric_dimensions.every(name => Number(r.dimensions[name]) >= 1)
+      );
+    }}
     function escapeHtml(value) {{
       return String(value ?? '').replace(/[&<>"']/g, ch => ({{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}}[ch]));
     }}
@@ -600,15 +799,18 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
         card.className = 'candidate-card' + (id === selectedId ? ' active' : '');
         card.draggable = true;
         card.dataset.id = id;
+        const judgeChip = payload.blind
+          ? ''
+          : `<span class="chip ${{chipClass(c.judge.main_issue)}}">${{escapeHtml(c.judge.main_issue)}}</span>`;
         card.innerHTML = `
           <div class="card-top">
             <span class="rank-pill">${{index + 1}}</span>
-            <span class="score-line">J ${{escapeHtml(c.judge.overall_quality)}} | H ${{escapeHtml(c.quality_score)}} | C ${{escapeHtml(c.combined_quality_score)}}</span>
+            <span class="score-line">${{payload.blind ? 'blinded review' : `J ${{escapeHtml(c.judge.overall_quality)}} | H ${{escapeHtml(c.quality_score)}} | C ${{escapeHtml(c.combined_quality_score)}}`}}</span>
           </div>
           <div class="candidate-id">${{escapeHtml(c.candidate_id)}}</div>
           <div class="card-prompt">${{escapeHtml(c.prompt)}}</div>
           <div class="chip-row">
-            <span class="chip ${{chipClass(c.judge.main_issue)}}">${{escapeHtml(c.judge.main_issue)}}</span>
+            ${{judgeChip}}
             ${{r.rating ? `<span class="chip good">manual ${{r.rating}}</span>` : '<span class="chip">unrated</span>'}}
             ${{r.decision ? `<span class="chip neutral">${{escapeHtml(r.decision)}}</span>` : ''}}
           </div>`;
@@ -625,6 +827,8 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       }}
     }}
     function selectCandidate(id) {{
+      review(selectedId).active_seconds += Math.max(0, (performance.now() - selectedAt) / 1000);
+      selectedAt = performance.now();
       selectedId = id;
       renderList();
       renderDetail();
@@ -634,10 +838,12 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       const r = review(selectedId);
       const rank = state.order.indexOf(selectedId) + 1;
       el('detailTitle').textContent = `${{rank}}. ${{c.candidate_id}}`;
-      el('detailMeta').textContent = `${{c.prompt_family || 'unknown'}} | ${{c.confidence_bucket || 'needs_review'}} | initial rank ${{c.initial_rank}}`;
+      el('detailMeta').textContent = payload.blind
+        ? `${{c.prompt_family || 'unknown'}} | blinded candidate`
+        : `${{c.prompt_family || 'unknown'}} | ${{c.confidence_bucket || 'needs_review'}} | initial rank ${{c.initial_rank}}`;
       el('promptText').textContent = c.prompt || '';
       el('lyricsText').textContent = c.lyrics || '';
-      el('detailChips').innerHTML = [
+      el('detailChips').innerHTML = payload.blind ? '' : [
         c.judge.main_issue,
         `judge ${{c.judge.overall_quality}}`,
         `usable ${{c.judge.usable_as_is}}`,
@@ -653,10 +859,10 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
         ['Internal Rhyme', c.rhyme.internal_rhyme_rate],
         ['Avg Words', c.line_stats.avg_line_words],
       ];
-      el('metrics').innerHTML = metrics.map(([label, value]) => `<div class="metric"><div class="label">${{escapeHtml(label)}}</div><div class="value">${{escapeHtml(value)}}</div></div>`).join('');
-      renderBars(c);
+      el('metrics').innerHTML = payload.blind ? '' : metrics.map(([label, value]) => `<div class="metric"><div class="label">${{escapeHtml(label)}}</div><div class="value">${{escapeHtml(value)}}</div></div>`).join('');
+      if (payload.blind) el('dimensionBars').innerHTML = ''; else renderBars(c);
       renderReviewControls(c, r);
-      el('judgeReason').textContent = c.judge.short_reason || '';
+      el('judgeReason').textContent = payload.blind ? 'Automated scores and judge feedback are hidden.' : (c.judge.short_reason || '');
     }}
     function renderBars(c) {{
       const entries = Object.entries(c.dimensions || {{}});
@@ -669,18 +875,33 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       el('ratingButtons').innerHTML = [1,2,3,4,5].map(n => `<button class="${{r.rating === n ? 'selected' : ''}}" data-rating="${{n}}">${{n}}</button>`).join('');
       el('ratingButtons').querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {{
         review(selectedId).rating = Number(btn.dataset.rating);
+        touchReview(selectedId);
         saveState(); renderList(); renderDetail();
+      }}));
+      el('dimensionRatings').innerHTML = payload.rubric_dimensions.map(name => `
+        <label>${{escapeHtml(name.replaceAll('_', ' '))}}</label>
+        <select data-dimension="${{name}}">
+          <option value="">--</option>
+          ${{[1,2,3,4,5].map(value => `<option value="${{value}}" ${{r.dimensions[name] === value ? 'selected' : ''}}>${{value}}</option>`).join('')}}
+        </select>`).join('');
+      el('dimensionRatings').querySelectorAll('select').forEach(select => select.addEventListener('change', () => {{
+        review(selectedId).dimensions[select.dataset.dimension] = select.value ? Number(select.value) : null;
+        touchReview(selectedId);
+        saveState();
       }}));
       const decisions = [['keep','Keep'], ['edit','Edit'], ['drop','Drop']];
       el('decisionButtons').innerHTML = decisions.map(([value,label]) => `<button class="${{r.decision === value ? 'selected' : ''}}" data-decision="${{value}}">${{label}}</button>`).join('');
       el('decisionButtons').querySelectorAll('button').forEach(btn => btn.addEventListener('click', () => {{
         review(selectedId).decision = btn.dataset.decision;
+        touchReview(selectedId);
         saveState(); renderList(); renderDetail();
       }}));
       el('notes').value = r.notes || '';
+      el('editedLyrics').value = r.edited_lyrics || '';
+      el('issueTags').value = (r.issue_tags || []).join(', ');
     }}
     function updateProgress() {{
-      const reviewed = candidates.filter(c => review(c.candidate_id).rating).length;
+      const reviewed = candidates.filter(c => reviewComplete(c.candidate_id)).length;
       const pct = Math.round(100 * reviewed / candidates.length);
       el('progressText').textContent = `${{reviewed}}/${{candidates.length}} reviewed`;
       el('progressFill').style.width = pct + '%';
@@ -714,25 +935,64 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       selectCandidate(state.order[nextIndex]);
     }}
     function exportRows() {{
+      review(selectedId).active_seconds += Math.max(0, (performance.now() - selectedAt) / 1000);
+      selectedAt = performance.now();
       return state.order.map((id, index) => {{
         const c = byId.get(id);
         const r = review(id);
         return {{
+          review_id: `${{payload.review_session_id}}:${{id}}`,
+          reviewer_id: state.session.reviewer_id,
+          reviewer_type: 'human',
+          label_source: 'human_entered',
+          human_attested: Boolean(state.session.human_attested),
+          reviewed_at: r.reviewed_at,
+          session_id: payload.review_session_id,
+          session_started_at: state.session.started_at,
+          session_note: state.session.session_note,
+          rubric_version: payload.rubric_version,
+          app_version: payload.app_version,
+          app_commit_sha: payload.app_commit_sha,
+          app_source_sha256: payload.app_source_sha256,
+          review_target_fingerprint: payload.review_target_fingerprint,
+          blinded: Boolean(payload.blind),
+          review_duration_seconds: Math.round(r.active_seconds || 0),
           manual_rank: index + 1,
           candidate_id: id,
           manual_rating: r.rating,
           decision: r.decision,
+          dimensions: r.dimensions,
+          issue_tags: r.issue_tags,
           notes: r.notes,
+          edited_lyrics: r.edited_lyrics || null,
+          reviewed_text_sha256: c.normalized_text_sha256,
+          prompt_key: c.prompt_key,
           prompt: c.prompt,
-          judge_quality: c.judge.overall_quality,
-          judge_issue: c.judge.main_issue,
-          judge_reason: c.judge.short_reason,
-          heuristic_score: c.quality_score,
-          combined_score: c.combined_quality_score,
-          quality_tags: c.quality_tags,
-          lyrics: c.lyrics
+          lyrics: c.lyrics,
+          provenance: c.provenance,
+          queue_reason: c.queue_reason,
+          auto_metadata: {{
+            judge_quality: c.judge.overall_quality,
+            judge_issue: c.judge.main_issue,
+            judge_reason: c.judge.short_reason,
+            heuristic_score: c.quality_score,
+            combined_score: c.combined_quality_score,
+            quality_tags: c.quality_tags
+          }}
         }};
       }});
+    }}
+    function validateExport() {{
+      if (!state.session.reviewer_id.trim()) {{ alert('Enter a stable reviewer ID or pseudonym before export.'); return false; }}
+      if (!state.session.human_attested) {{ alert('Human attestation is required before export.'); return false; }}
+      const incomplete = state.order.filter(id => !reviewComplete(id));
+      if (incomplete.length) {{ alert(`${{incomplete.length}} candidates still need rating, decision, and all dimension scores.`); return false; }}
+      const missingNotes = state.order.filter(id => {{
+        const r = review(id);
+        return (r.decision !== 'keep' || Object.values(r.dimensions).some(value => Number(value) <= 2)) && !r.notes.trim();
+      }});
+      if (missingNotes.length) {{ alert(`${{missingNotes.length}} edit/drop or low-dimension reviews require notes.`); return false; }}
+      return true;
     }}
     function download(name, text, type) {{
       const blob = new Blob([text], {{ type }});
@@ -742,12 +1002,27 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       a.remove(); URL.revokeObjectURL(url);
     }}
     function csvCell(value) {{
-      return '"' + String(value ?? '').replace(/"/g, '""') + '"';
+      const rendered = value && typeof value === 'object' ? JSON.stringify(value) : String(value ?? '');
+      return '"' + rendered.replace(/"/g, '""') + '"';
     }}
     el('notes').addEventListener('input', e => {{
       review(selectedId).notes = e.target.value;
+      touchReview(selectedId);
       saveState(); renderList();
     }});
+    el('editedLyrics').addEventListener('input', e => {{
+      review(selectedId).edited_lyrics = e.target.value;
+      touchReview(selectedId);
+      saveState();
+    }});
+    el('issueTags').addEventListener('input', e => {{
+      review(selectedId).issue_tags = e.target.value.split(',').map(value => value.trim()).filter(Boolean);
+      touchReview(selectedId);
+      saveState();
+    }});
+    el('reviewerId').addEventListener('input', e => {{ state.session.reviewer_id = e.target.value; saveState(); }});
+    el('sessionNote').addEventListener('input', e => {{ state.session.session_note = e.target.value; saveState(); }});
+    el('humanAttested').addEventListener('change', e => {{ state.session.human_attested = e.target.checked; saveState(); }});
     el('search').addEventListener('input', renderList);
     el('filter').addEventListener('change', renderList);
     el('moveTop').addEventListener('click', () => moveSelectedTo(0));
@@ -756,10 +1031,13 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
     el('moveDown').addEventListener('click', () => moveSelected(1));
     el('prevCandidate').addEventListener('click', () => selectRelative(-1));
     el('nextCandidate').addEventListener('click', () => selectRelative(1));
-    el('exportJson').addEventListener('click', () => download(`${{payload.export_prefix}}.json`, JSON.stringify(exportRows(), null, 2), 'application/json'));
+    el('exportJson').addEventListener('click', () => {{
+      if (validateExport()) download(`${{payload.export_prefix}}.json`, JSON.stringify(exportRows(), null, 2), 'application/json');
+    }});
     el('exportCsv').addEventListener('click', () => {{
+      if (!validateExport()) return;
       const rows = exportRows();
-      const columns = ['manual_rank','candidate_id','manual_rating','decision','notes','judge_quality','judge_issue','heuristic_score','combined_score','prompt','lyrics'];
+      const columns = ['review_id','reviewer_id','reviewed_at','session_id','rubric_version','blinded','review_duration_seconds','manual_rank','candidate_id','manual_rating','decision','dimensions','issue_tags','notes','edited_lyrics','reviewed_text_sha256','prompt_key','prompt','lyrics'];
       const csv = [columns.join(',')].concat(rows.map(row => columns.map(col => csvCell(row[col])).join(','))).join('\\n');
       download(`${{payload.export_prefix}}.csv`, csv, 'text/csv');
     }});
@@ -777,9 +1055,14 @@ def build_html(candidates: list[dict[str, Any]], *, review_set: str, export_pref
       if (e.key === 'ArrowDown') {{ e.preventDefault(); moveSelected(1); }}
       if (/^[1-5]$/.test(e.key)) {{
         review(selectedId).rating = Number(e.key);
+        touchReview(selectedId);
         saveState(); renderList(); renderDetail();
       }}
     }});
+    el('reviewerId').value = state.session.reviewer_id || '';
+    el('sessionNote').value = state.session.session_note || '';
+    el('humanAttested').checked = Boolean(state.session.human_attested);
+    el('rubricVersion').textContent = payload.rubric_version;
     renderList();
     renderDetail();
     updateProgress();
@@ -793,7 +1076,14 @@ def main() -> int:
     args = parse_args()
     if args.limit <= 0:
         raise ValueError("--limit must be > 0")
-    candidates = load_candidates(args.judge_dir, args.source, args.disagreements_md, args.judged_jsonl, args.limit)
+    candidates = load_candidates(
+        args.judge_dir,
+        args.source,
+        args.disagreements_md,
+        args.judged_jsonl,
+        args.queue_jsonl,
+        args.limit,
+    )
     export_prefix = args.export_prefix or (
         "manual_rank_results" if args.source == "disagreements" else f"manual_rank_{args.source}_results"
     )
@@ -801,8 +1091,34 @@ def main() -> int:
         "manual_rank_30.html" if args.source == "disagreements" else f"manual_rank_{args.source}_{args.limit}.html"
     )
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(build_html(candidates, review_set=args.source, export_prefix=export_prefix), encoding="utf-8")
-    print(json.dumps({"out": str(out), "source": args.source, "candidate_count": len(candidates)}, indent=2))
+    blind = args.blind if args.blind is not None else args.source == "quality_goal"
+    review_session_id = args.review_session_id or f"{args.source}-{args.limit}"
+    out.write_text(
+        build_html(
+            candidates,
+            review_set=args.source,
+            export_prefix=export_prefix,
+            blind=blind,
+            rubric_version=args.rubric_version,
+            review_session_id=review_session_id,
+            app_version=args.app_version,
+            app_commit_sha=current_commit(),
+        ),
+        encoding="utf-8",
+    )
+    print(
+        json.dumps(
+            {
+                "out": str(out),
+                "source": args.source,
+                "candidate_count": len(candidates),
+                "blind": blind,
+                "rubric_version": args.rubric_version,
+                "review_session_id": review_session_id,
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

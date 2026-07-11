@@ -23,7 +23,7 @@ venv/
 /.cache/
 /.flash/
 
-# Generated datasets. Reproducibility inputs under data/prompts stay visible.
+# Generated datasets. Reproducibility prompt inputs live under configs/prompts.
 /data/*.csv
 /data/*.parquet
 /data/raw/

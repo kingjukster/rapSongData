@@ -17,6 +17,10 @@ WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?")
 CHAT_ASSISTANT_RE = re.compile(r"<\|im_start\|>assistant\n(?P<content>.*?)<\|im_end\|>", re.S)
 CHAT_USER_RE = re.compile(r"<\|im_start\|>user\n(?P<content>.*?)<\|im_end\|>", re.S)
 CONTROL_TOKENS = ("<|im_start|>", "<|im_end|>")
+LINE_COUNT_RE = re.compile(
+    r"\b(?:exactly\s+)?(?P<count>\d{1,2})\s+(?:(?:short|compact|clean|original)\s+){0,3}(?:lines?|bars?)\b",
+    re.I,
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -28,7 +32,19 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--hard-negatives", type=Path, default=None)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--markdown-out", type=Path, default=None)
-    parser.add_argument("--target-line-count", type=int, default=12)
+    parser.add_argument(
+        "--target-line-count",
+        type=int,
+        default=None,
+        help="Fallback target when a row has neither metadata nor an explicit prompt count.",
+    )
+    parser.add_argument(
+        "--require-explicit-target",
+        action="store_true",
+        help="Fail rows whose target cannot be recovered from metadata or prompt text.",
+    )
+    parser.add_argument("--require-provenance", action="store_true")
+    parser.add_argument("--require-human-review", action="store_true")
     parser.add_argument("--min-preference-score-delta", type=float, default=0.0)
     parser.add_argument("--no-fail", action="store_true")
     return parser.parse_args()
@@ -115,6 +131,74 @@ def extract_user(row: dict[str, Any]) -> str:
     return str(row.get("prompt") or "")
 
 
+def expected_line_count(row: dict[str, Any], fallback: int | None = None) -> int | None:
+    meta = metadata(row)
+    for key in ("target_line_count", "requested_line_count", "bar_count"):
+        value = meta.get(key)
+        try:
+            if value is not None and int(value) > 0:
+                return int(value)
+        except (TypeError, ValueError):
+            continue
+    match = LINE_COUNT_RE.search(extract_user(row))
+    if match:
+        return int(match.group("count"))
+    return fallback
+
+
+def verified_human_review(meta: dict[str, Any]) -> bool:
+    review = meta.get("human_review")
+    if not isinstance(review, dict):
+        return False
+    if not all(
+        str(review.get(key) or "").strip()
+        for key in (
+            "reviewer_id",
+            "reviewed_at",
+            "rubric_version",
+            "app_source_sha256",
+            "review_target_fingerprint",
+        )
+    ):
+        return False
+    if review.get("reviewer_type") != "human" or review.get("label_source") != "human_entered":
+        return False
+    if review.get("human_attested") is not True or review.get("blinded") is not True:
+        return False
+    if review.get("decision") != "keep":
+        return False
+    try:
+        return int(review.get("overall_rating") or 0) >= 4
+    except (TypeError, ValueError):
+        return False
+
+
+def verified_source_provenance(meta: dict[str, Any]) -> bool:
+    if not str(meta.get("license_scope") or meta.get("source_license") or "").strip():
+        return False
+    provenance = meta.get("source_provenance")
+    if not isinstance(provenance, dict):
+        return False
+    required = (
+        "candidate_id",
+        "judge_source_sha256",
+        "generation_source_sha256",
+        "generation_summary_sha256",
+        "generation_run_id",
+        "judge_run_id",
+        "model_id",
+        "model_revision",
+        "model_revision_source",
+        "created_at",
+    )
+    if not all(str(provenance.get(key) or "").strip() for key in required):
+        return False
+    rng = provenance.get("rng_provenance")
+    return (
+        isinstance(rng, dict)
+        and bool(str(rng.get("protocol") or "").strip())
+        and isinstance(rng.get("manual_seed"), int)
+    )
 def add_issue(
     issues: list[dict[str, Any]],
     *,
@@ -137,7 +221,15 @@ def add_issue(
     )
 
 
-def audit_split(path: Path, split: str, target_line_count: int) -> dict[str, Any]:
+def audit_split(
+    path: Path,
+    split: str,
+    target_line_count: int | None,
+    *,
+    require_explicit_target: bool = False,
+    require_provenance: bool = False,
+    require_human_review: bool = False,
+) -> dict[str, Any]:
     rows, parse_errors = read_jsonl(path)
     issues: list[dict[str, Any]] = []
     add_issue(
@@ -149,12 +241,18 @@ def audit_split(path: Path, split: str, target_line_count: int) -> dict[str, Any
     )
     empty_assistant: list[dict[str, Any]] = []
     line_errors: list[dict[str, Any]] = []
+    missing_targets: list[dict[str, Any]] = []
+    missing_provenance: list[dict[str, Any]] = []
+    missing_human_review: list[dict[str, Any]] = []
     control_token_hits: list[dict[str, Any]] = []
     ids: list[str] = []
     prompt_keys: list[str] = []
+    themes: list[str] = []
     line_counts: list[int] = []
     word_counts: list[int] = []
     source_counts: Counter[str] = Counter()
+    provenance_counts: Counter[str] = Counter()
+    target_counts: Counter[str] = Counter()
     issue_counts: Counter[str] = Counter()
     tag_counts: Counter[str] = Counter()
     normalized_assistants: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -165,6 +263,7 @@ def audit_split(path: Path, split: str, target_line_count: int) -> dict[str, Any
         lines = lyric_lines(assistant)
         ids.append(row_id)
         prompt_keys.append(str(meta.get("prompt_key") or normalize_text(extract_user(row))[:80]))
+        themes.append(normalize_text(meta.get("theme")))
         source_counts[str(meta.get("source_bucket") or meta.get("source") or "unknown")] += 1
         issue_counts[str(meta.get("judge_issue") or "none")] += 1
         for tag in meta.get("quality_tags") or []:
@@ -176,8 +275,13 @@ def audit_split(path: Path, split: str, target_line_count: int) -> dict[str, Any
         )
         if not assistant.strip():
             empty_assistant.append({"row": index, "id": row_id})
-        expected_lines = int(meta.get("target_line_count") or target_line_count)
-        if len(lines) != expected_lines:
+        expected_lines = expected_line_count(row, target_line_count)
+        if expected_lines is None:
+            missing_targets.append({"row": index, "id": row_id})
+            target_counts["missing"] += 1
+        else:
+            target_counts[str(expected_lines)] += 1
+        if expected_lines is not None and len(lines) != expected_lines:
             line_errors.append(
                 {
                     "row": index,
@@ -186,6 +290,12 @@ def audit_split(path: Path, split: str, target_line_count: int) -> dict[str, Any
                     "actual": len(lines),
                 }
             )
+        provenance = str(meta.get("license_scope") or meta.get("source_license") or "").strip()
+        provenance_counts[provenance or "missing"] += 1
+        if not verified_source_provenance(meta):
+            missing_provenance.append({"row": index, "id": row_id})
+        if not verified_human_review(meta):
+            missing_human_review.append({"row": index, "id": row_id})
         if any(token in assistant for token in CONTROL_TOKENS):
             control_token_hits.append({"row": index, "id": row_id})
     duplicate_ids = [
@@ -211,6 +321,36 @@ def audit_split(path: Path, split: str, target_line_count: int) -> dict[str, Any
         message=f"{split} assistant line count does not match target.",
         count=len(line_errors),
         examples=line_errors[:5],
+    )
+    add_issue(
+        issues,
+        code="missing_explicit_target_line_count",
+        message=f"{split} rows have no target count in metadata or prompt text.",
+        count=len(missing_targets),
+        examples=missing_targets[:5],
+        severity="hard" if require_explicit_target else "warning",
+    )
+    add_issue(
+        issues,
+        code="missing_provenance",
+        message=(
+            f"{split} rows lack complete source provenance: license, source hashes, run ids, "
+            "model revision evidence, timestamp, or RNG protocol."
+        ),
+        count=len(missing_provenance),
+        examples=missing_provenance[:5],
+        severity="hard" if require_provenance else "warning",
+    )
+    add_issue(
+        issues,
+        code="missing_verified_human_review",
+        message=(
+            f"{split} rows lack an attested, blinded human keep with reviewer/timestamp/rubric "
+            "metadata and overall rating >= 4."
+        ),
+        count=len(missing_human_review),
+        examples=missing_human_review[:5],
+        severity="hard" if require_human_review else "warning",
     )
     add_issue(
         issues,
@@ -241,10 +381,13 @@ def audit_split(path: Path, split: str, target_line_count: int) -> dict[str, Any
         "issues": issues,
         "ids": ids,
         "prompt_keys": prompt_keys,
+        "themes": themes,
         "normalized_assistants": normalized_assistants,
         "line_count_summary": numeric_summary(line_counts),
         "assistant_word_count_summary": numeric_summary(word_counts),
         "source_counts": dict(source_counts),
+        "provenance_counts": dict(provenance_counts),
+        "target_line_count_counts": dict(target_counts),
         "judge_issue_counts": dict(issue_counts),
         "quality_tag_counts": dict(tag_counts),
     }
@@ -281,6 +424,16 @@ def audit_cross_split(train: dict[str, Any], validation: dict[str, Any]) -> list
         message="Train and validation share normalized assistant text.",
         count=len(text_overlap),
         examples=[{"normalized_text": item[:120]} for item in text_overlap[:5]],
+    )
+    train_themes = {theme for theme in train.get("themes", []) if theme}
+    validation_themes = {theme for theme in validation.get("themes", []) if theme}
+    theme_overlap = sorted(train_themes & validation_themes)
+    add_issue(
+        issues,
+        code="train_validation_theme_overlap",
+        message="Train and validation share normalized themes.",
+        count=len(theme_overlap),
+        examples=[{"theme": item} for item in theme_overlap[:5]],
     )
     return issues
 
@@ -454,6 +607,8 @@ def markdown_report(report: dict[str, Any]) -> str:
             "line_count_summary",
             "assistant_word_count_summary",
             "source_counts",
+            "provenance_counts",
+            "target_line_count_counts",
             "judge_issue_counts",
             "quality_tag_counts",
             "split_counts",
@@ -482,19 +637,29 @@ def markdown_report(report: dict[str, Any]) -> str:
 
 def main() -> int:
     args = parse_args()
-    train = audit_split(args.train, "train", args.target_line_count)
-    validation = audit_split(args.validation, "validation", args.target_line_count)
+    split_options = {
+        "require_explicit_target": args.require_explicit_target,
+        "require_provenance": args.require_provenance,
+        "require_human_review": args.require_human_review,
+    }
+    train = audit_split(args.train, "train", args.target_line_count, **split_options)
+    validation = audit_split(args.validation, "validation", args.target_line_count, **split_options)
     report: dict[str, Any] = {
         "config": {
             "target_line_count": args.target_line_count,
+            **split_options,
             "min_preference_score_delta": args.min_preference_score_delta,
         },
         "datasets": {
-            "train": {key: value for key, value in train.items() if key not in {"ids", "prompt_keys", "normalized_assistants"}},
+            "train": {
+                key: value
+                for key, value in train.items()
+                if key not in {"ids", "prompt_keys", "themes", "normalized_assistants"}
+            },
             "validation": {
                 key: value
                 for key, value in validation.items()
-                if key not in {"ids", "prompt_keys", "normalized_assistants"}
+                if key not in {"ids", "prompt_keys", "themes", "normalized_assistants"}
             },
             "manifest": audit_manifest(args.manifest, train, validation),
             "preference_pairs": audit_preference_pairs(args.preference_pairs, args.min_preference_score_delta),

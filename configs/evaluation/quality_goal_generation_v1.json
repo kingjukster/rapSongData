@@ -1,0 +1,98 @@
+{
+  "name": "quality_goal_generation_v1",
+  "purpose": "Locked raw-generation comparison for the Qwen3-4B exact-12-line quality goal.",
+  "base_model": "Qwen/Qwen3-4B",
+  "model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "seed": 20260710,
+  "generation": {
+    "batch_size": 1,
+    "strict_row_seeds": true,
+    "max_input_tokens": 512,
+    "max_new_tokens": 320,
+    "temperature": 0.82,
+    "top_p": 0.9,
+    "top_k": 50,
+    "repetition_penalty": 1.16,
+    "no_repeat_ngram_size": 5,
+    "load_in_4bit": true,
+    "disable_thinking": true,
+    "block_slurs": false,
+    "enforce_target_line_count": false,
+    "underlength_retries": 0,
+    "resume": false
+  },
+  "models": {
+    "base": {
+      "adapter": false
+    },
+    "e1": {
+      "adapter": true,
+      "adapter_dir": "model/artifacts/qwen3-4b-12line-human-v1-e1-lr5e5-s20260710",
+      "training_config": "configs/training/local_cuda_qwen3_4b_12line_human_v1_e1.json"
+    },
+    "e2": {
+      "adapter": true,
+      "adapter_dir": "model/artifacts/qwen3-4b-12line-human-v1-e2-lr5e5-s20260710",
+      "training_config": "configs/training/local_cuda_qwen3_4b_12line_human_v1_e2.json"
+    },
+    "e3": {
+      "adapter": true,
+      "adapter_dir": "model/artifacts/qwen3-4b-12line-human-v1-e3-lr5e5-s20260710",
+      "training_config": "configs/training/local_cuda_qwen3_4b_12line_human_v1_e3.json"
+    }
+  },
+  "stages": {
+    "development": {
+      "prompt_file": "configs/prompts/quality_goal_dev_prompts.json",
+      "expected_prompt_count": 48,
+      "samples_per_prompt": 2,
+      "models": [
+        "base",
+        "e1",
+        "e2",
+        "e3"
+      ]
+    },
+    "confirmation": {
+      "prompt_file": "configs/prompts/quality_goal_confirmation_prompts.json",
+      "expected_prompt_count": 24,
+      "samples_per_prompt": 2,
+      "models": [
+        "base",
+        "selected_development_winner"
+      ]
+    }
+  },
+  "evaluation_packet": {
+    "script": "scripts/build_quality_goal_eval_packet.py",
+    "training_jsonl": [
+      "data/training/qwen3_4b_12line_human_v1/train.jsonl",
+      "data/training/qwen3_4b_12line_human_v1/validation.jsonl",
+      "data/training/qwen3_4b_12line_human_v1/test.jsonl"
+    ],
+    "ngram_size": 5,
+    "similarity_threshold": 0.85,
+    "max_train_records": 5000,
+    "blind_aliases": true
+  },
+  "selection_policy": {
+    "development_is_blind": true,
+    "auto_select_winner": false,
+    "confirmation_requires_explicit_winner": true,
+    "allowed_winners": [
+      "e1",
+      "e2",
+      "e3"
+    ]
+  },
+  "promotion": {
+    "resolve_reviews_script": "scripts/resolve_quality_goal_eval_reviews.py",
+    "gate_script": "scripts/evaluate_quality_goal_promotion.py",
+    "preference_wilson_95_lower_bound": 0.5,
+    "maximum_exact_line_rate_drop": 0.02,
+    "allow_new_slur_prompt_leak_or_high_copy_rows": false,
+    "maximum_incomplete_ending_rate_increase": 0.01,
+    "minimum_relative_target_issue_burden_improvement": 0.1,
+    "maximum_individual_issue_rate_increase": 0.03
+  }
+}
