@@ -7,6 +7,8 @@ This loads the base model plus the adapter saved under
 from __future__ import annotations
 
 import argparse
+import datetime as dt
+import hashlib
 import json
 import os
 import re
@@ -46,6 +48,22 @@ BLOCKED_PHRASES = [
     "You might also like",
     "Embed",
 ]
+
+
+_ALLOWED_BASE_MODELS = {
+    "qwen/qwen2.5-7b",
+    "qwen/qwen2.5-7b-instruct",
+}
+
+
+def validate_qwen25_7b_only(model_name: str, *, scope: str) -> str:
+    normalized = (model_name or "").split("@", 1)[0].strip().lower()
+    if normalized not in _ALLOWED_BASE_MODELS:
+        raise ValueError(
+            f"{scope} policy requires Qwen2.5-7B. "
+            f"Use Qwen/Qwen2.5-7B-Instruct or Qwen/Qwen2.5-7B. Received: {model_name!r}"
+        )
+    return normalized
 
 
 def configure_torch_runtime(torch) -> dict[str, object]:
@@ -101,6 +119,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-repeat-ngram-size", type=int, default=5)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--clean-output", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument(
+        "--run-summary-dir",
+        type=Path,
+        default=None,
+        help="Directory to write run_summary.json and run_summary.md.",
+    )
     return parser.parse_args()
 
 
@@ -191,6 +215,11 @@ def main() -> None:
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     args = parse_args()
+    validate_qwen25_7b_only(args.base_model, scope="Generation run")
+    command = [sys.executable, *sys.argv]
+    command_hash = hashlib.md5(" ".join(str(item) for item in command).encode("utf-8")).hexdigest()
+    run_started_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_started = time.perf_counter()
     runtime = configure_torch_runtime(torch)
     load_started_at = time.perf_counter()
     torch.manual_seed(args.seed)
@@ -239,6 +268,7 @@ def main() -> None:
         torch.cuda.reset_peak_memory_stats()
         torch.cuda.synchronize()
     generation_started_at = time.perf_counter()
+    generation_start_memory_bytes = torch.cuda.max_memory_allocated() if use_cuda else 0
     with torch.inference_mode():
         generate_kwargs = {
             "max_new_tokens": args.max_new_tokens,
@@ -272,7 +302,136 @@ def main() -> None:
     }
     if use_cuda:
         timing["max_memory_allocated_gb"] = round(torch.cuda.max_memory_allocated() / 1024**3, 2)
+    run_ended_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_wall_seconds = round(time.perf_counter() - run_started, 2)
+    run_summary_dir = args.run_summary_dir or args.adapter_dir
+    run_summary_dir.mkdir(parents=True, exist_ok=True)
+    run_summary_json = run_summary_dir / "run_summary.json"
+    run_summary_md = run_summary_dir / "run_summary.md"
+    run_result_json = run_summary_dir / "generation_result.json"
+    run_result_txt = run_summary_dir / "generation_result.txt"
+    run_log_path = run_summary_dir / "generation.log"
+    generated_token_count = generated_tokens
+    summary_payload = {
+        "command": command,
+        "command_hash": command_hash,
+        "started_at": run_started_at,
+        "ended_at": run_ended_at,
+        "wall_seconds": run_wall_seconds,
+        "base_model": args.base_model,
+        "adapter_dir": str(args.adapter_dir),
+        "output_dir": str(run_summary_dir),
+        "settings": {
+            "task": args.task,
+            "max_new_tokens": args.max_new_tokens,
+            "min_new_tokens": args.min_new_tokens,
+            "temperature": args.temperature,
+            "top_p": args.top_p,
+            "top_k": args.top_k,
+            "repetition_penalty": args.repetition_penalty,
+            "no_repeat_ngram_size": args.no_repeat_ngram_size,
+            "seed": args.seed,
+            "target_bars": args.target_bars,
+            "max_words_per_bar": args.max_words_per_bar,
+            "load_in_4bit": args.load_in_4bit,
+            "add_structural_special_tokens": args.add_structural_special_tokens,
+            "clean_output": args.clean_output,
+            "use_cuda": use_cuda,
+        },
+        "environment": {
+            "runtime": runtime,
+            "torch_version": torch.__version__,
+            "torch_cuda": torch.version.cuda,
+            "gpu": torch.cuda.get_device_name(0) if use_cuda else None,
+            "bf16_supported": bool(use_cuda and torch.cuda.is_bf16_supported()),
+        },
+        "timing": timing,
+        "artifacts": {
+            "run_summary_json": str(run_summary_json),
+            "run_summary_md": str(run_summary_md),
+            "generation_result_json": str(run_result_json),
+            "generation_result_txt": str(run_result_txt),
+            "run_log": str(run_log_path),
+        },
+    }
+    summary_payload["metrics"] = {
+        "prompt_tokens": int(inputs["input_ids"].shape[-1]),
+        "generated_token_count": generated_token_count,
+        "generation_seconds": round(generation_seconds, 2),
+        "tokens_per_second": round(generated_tokens / max(generation_seconds, 1e-9), 2),
+        "peak_vram_gb": round(torch.cuda.max_memory_allocated() / 1024**3, 2) if use_cuda else None,
+        "generation_start_allocated_gb": round(generation_start_memory_bytes / 1024**3, 2) if use_cuda else None,
+    }
+    run_summary_json.write_text(json.dumps(summary_payload, indent=2), encoding="utf-8")
+    run_result_json.write_text(
+        json.dumps(
+            {
+                "command": command,
+                "command_hash": command_hash,
+                "prompt": prompt,
+                "raw_output": tokenizer.decode(output_ids[0], skip_special_tokens=False),
+                "cleaned_output": text,
+                "timing": timing,
+                "settings": summary_payload["settings"],
+                "environment": summary_payload["environment"],
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    run_result_txt.write_text(text, encoding="utf-8")
+    run_log_path.write_text(
+        "\n".join(
+            [
+                f"started_at={run_started_at}",
+                f"command_hash={command_hash}",
+                f"model_load_seconds={timing['model_load_seconds']}",
+                f"generation_seconds={timing['generation_seconds']}",
+                f"generated_tokens={generated_token_count}",
+                f"tokens_per_second={timing['tokens_per_second']}",
+                f"peak_vram_gb={timing.get('max_memory_allocated_gb', 0)}",
+                f"ended_at={run_ended_at}",
+                f"wall_seconds={run_wall_seconds}",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    run_summary_md.write_text(
+        "\n".join(
+            [
+                "# Local Generation Run Summary",
+                "",
+                f"- Command: {' '.join(summary_payload['command'])}",
+                f"- Started: {run_started_at}",
+                f"- Ended: {run_ended_at}",
+                f"- Wall seconds: {run_wall_seconds}",
+                f"- Base model: {args.base_model}",
+                f"- Adapter: {args.adapter_dir}",
+                f"- Quantization: {'4-bit nf4' if args.load_in_4bit and use_cuda else 'non-4-bit fallback'}",
+                f"- Command hash: {command_hash}",
+                "",
+                "```json",
+                json.dumps(summary_payload["environment"], indent=2),
+                "```",
+                "",
+                "```json",
+                json.dumps(summary_payload["timing"], indent=2),
+                "```",
+                "",
+                "## Output artifacts",
+                "",
+                f"- `run_summary_json`: {run_summary_json}",
+                f"- `run_summary_md`: {run_summary_md}",
+                f"- `generation_result_json`: {run_result_json}",
+                f"- `generation_result_txt`: {run_result_txt}",
+                f"- `run_log`: {run_log_path}",
+            ]
+        ),
+        encoding="utf-8",
+    )
     print("[timing] " + json.dumps(timing))
+    print(f"[summary] wrote run summary to {run_summary_json}")
     print(text)
 
 

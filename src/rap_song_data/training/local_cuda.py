@@ -10,10 +10,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import inspect
+import hashlib
 import json
 import math
 import os
+import re
 import shutil
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -33,11 +37,26 @@ CLEANED_VALIDATION_PATH = CLEANED_CORPUS_DIR / "categorized_rap_corpus_validatio
 CLEANING_SUMMARY_PATH = CLEANED_CORPUS_DIR / "corpus_cleaning_summary.json"
 CLEANING_REPORT_PATH = Path("reports/corpus_cleaning_report.md")
 CLEANING_REPORT_SUMMARY_PATH = Path("reports/corpus_cleaning_summary.json")
+LONG_RUN_SMOKE_THRESHOLD_STEPS = 200
 DEFAULT_CONFIG_TRAIN_PATHS = {
     Path("model/data/train.jsonl"),
     Path("model/data_full_verses/train.jsonl"),
     Path("model/data_special_tokens/train.jsonl"),
 }
+_ALLOWED_BASE_MODELS = {
+    "qwen/qwen2.5-7b",
+    "qwen/qwen2.5-7b-instruct",
+}
+
+
+def validate_qwen25_7b_only(model_name: str, *, scope: str) -> str:
+    normalized = (model_name or "").split("@", 1)[0].strip().lower()
+    if normalized not in _ALLOWED_BASE_MODELS:
+        raise ValueError(
+            f"{scope} policy requires Qwen2.5-7B. "
+            f"Use Qwen/Qwen2.5-7B-Instruct or Qwen/Qwen2.5-7B. Received: {model_name!r}"
+        )
+    return normalized
 
 
 def load_config(path: Path) -> dict[str, Any]:
@@ -57,8 +76,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-steps", type=int, default=None)
     parser.add_argument("--sequence-length", type=int, default=None)
     parser.add_argument("--timing-log-steps", type=int, default=None)
+    parser.add_argument("--skip-smoke-check", action="store_true")
     parser.add_argument("--load-in-4bit", action=argparse.BooleanOptionalAction, default=None)
     parser.add_argument("--add-structural-special-tokens", action=argparse.BooleanOptionalAction, default=None)
+    parser.add_argument(
+        "--enforce-qwen25-7b",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Require Qwen2.5-7B as the base model. Defaults to config policy or false.",
+    )
     parser.add_argument("--resume-from-checkpoint", type=Path, default=None)
     return parser.parse_args()
 
@@ -83,6 +109,8 @@ def resolve_config(args: argparse.Namespace) -> dict[str, Any]:
         config["training"]["load_in_4bit"] = args.load_in_4bit
     if args.add_structural_special_tokens is not None:
         config["add_structural_special_tokens"] = args.add_structural_special_tokens
+    if args.enforce_qwen25_7b is not None:
+        config["enforce_qwen25_7b"] = args.enforce_qwen25_7b
     if args.resume_from_checkpoint is not None:
         config["resume_from_checkpoint"] = str(args.resume_from_checkpoint)
     return config
@@ -513,6 +541,121 @@ def summarize_timing_records(records: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def emit_policy_warnings(training_cfg: dict[str, Any], dataset_cfg: dict[str, Any]) -> list[str]:
+    warnings: list[str] = []
+    sequence_length = int(training_cfg.get("sequence_length", 1024))
+    gradient_accumulation_steps = int(training_cfg.get("gradient_accumulation_steps", 1))
+    if sequence_length < 1024:
+        warnings.append(
+            f"sequence_length={sequence_length} is a speed-first setting and is not directly comparable "
+            "to 1024-token full-context runs."
+        )
+    if gradient_accumulation_steps <= 4:
+        warnings.append(
+            "gradient_accumulation_steps=4 is being used for faster iteration; for strict comparability, "
+            "prefer a higher accumulation setting (8)."
+        )
+    if dataset_cfg.get("format") == "text" and "chunked" in str(dataset_cfg.get("train_path", "")):
+        warnings.append("Chunked-cleaned corpus is used; this is a fast-iteration mode.")
+    return warnings
+
+
+def run_smoke_check(output_dir: Path) -> None:
+    command = [sys.executable, str(Path(__file__).with_name("local_cuda_smoke.py"))]
+    smoke_log = output_dir / "preflight_smoke.log"
+    with smoke_log.open("w", encoding="utf-8") as handle:
+        result = subprocess.run(command, stdout=handle, stderr=subprocess.STDOUT, text=True, check=False)
+    if result.returncode != 0:
+        raise SystemExit(
+            f"Preflight smoke check failed (exit code {result.returncode}). See {smoke_log} and fix the issue before training."
+        )
+    print(f"[policy] Preflight smoke check passed; log: {smoke_log}")
+
+
+def write_run_summary(
+    *,
+    output_dir: Path,
+    command: list[str],
+    run_started_at: str,
+    run_ended_at: str,
+    run_wall_seconds: float,
+    base_model: str,
+    dataset_cfg: dict[str, Any],
+    training_cfg: dict[str, Any],
+    timing_records: list[dict[str, Any]],
+    result: dict[str, Any],
+    policy_warnings: list[str],
+    runtime: dict[str, Any],
+) -> tuple[Path, Path]:
+    run_summary_json_path = output_dir / "run_summary.json"
+    run_summary_md_path = output_dir / "run_summary.md"
+    payload = {
+        "command": command,
+        "started_at": run_started_at,
+        "ended_at": run_ended_at,
+        "wall_seconds": run_wall_seconds,
+        "base_model": base_model,
+        "output_dir": str(output_dir),
+        "policy": {
+            "comparability_warnings": policy_warnings,
+        },
+        "dataset": {
+            "train_path": dataset_cfg["train_path"],
+            "validation_path": dataset_cfg["validation_path"],
+            "text_field": dataset_cfg.get("text_field", "training_text"),
+        },
+        "training": {
+            "max_steps": int(training_cfg["max_steps"]),
+            "sequence_length": int(training_cfg["sequence_length"]),
+            "per_device_train_batch_size": int(training_cfg["per_device_train_batch_size"]),
+            "gradient_accumulation_steps": int(training_cfg["gradient_accumulation_steps"]),
+            "learning_rate": float(training_cfg["learning_rate"]),
+            "load_in_4bit": bool(training_cfg.get("load_in_4bit", True)),
+            "bf16": bool(training_cfg.get("bf16", True)),
+            "tokenized_cache_dir": training_cfg.get("tokenized_cache_dir"),
+            "max_wall_time_minutes": training_cfg.get("max_wall_time_minutes"),
+        },
+        "runtime": runtime,
+        "timing_summary": summarize_timing_records(timing_records),
+        "result": result,
+    }
+    with run_summary_json_path.open("w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2)
+        handle.write("\n")
+
+    md_lines = [
+        "# Local CUDA Training Run Summary",
+        "",
+        f"- Command: {' '.join(command)}",
+        f"- Started: {run_started_at}",
+        f"- Ended: {run_ended_at}",
+        f"- Wall seconds: {run_wall_seconds}",
+        f"- Base model: {base_model}",
+        f"- Output folder: `{output_dir}`",
+        "",
+        "## Environment",
+        "",
+        f"```json\n{json.dumps(runtime, indent=2)}\n```",
+        "",
+        "## Policy",
+        "",
+    ]
+    if policy_warnings:
+        md_lines.extend([f"- {warning}" for warning in policy_warnings])
+    else:
+        md_lines.append("- No policy warnings.")
+    md_lines.extend(
+        [
+            "",
+            "## Result",
+            "",
+            f"```json\n{json.dumps(result, indent=2)}\n```",
+        ]
+    )
+    run_summary_md_path.write_text("\n".join(md_lines), encoding="utf-8")
+    return run_summary_json_path, run_summary_md_path
+
+
 def write_training_summary(
     *,
     output_dir: Path,
@@ -602,6 +745,10 @@ def main() -> None:
     if not torch.cuda.is_available():
         raise SystemExit("CUDA is not available to PyTorch. Check your PyTorch CUDA install.")
 
+    run_started_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_started = time.perf_counter()
+    command = [sys.executable, *sys.argv]
+    command_hash = hashlib.md5(" ".join(str(item) for item in command).encode("utf-8")).hexdigest()
     dataset_cfg = config["dataset"]
     training_cfg = config["training"]
     seed = int(training_cfg.get("seed", 42))
@@ -613,6 +760,14 @@ def main() -> None:
     model_revision = config.get("model_revision")
     output_dir = Path(config["output_dir"])
     output_dir.mkdir(parents=True, exist_ok=True)
+    policy_warnings = emit_policy_warnings(training_cfg=training_cfg, dataset_cfg=dataset_cfg)
+    if policy_warnings:
+        print("[policy] speed-first settings detected:")
+        for warning in policy_warnings:
+            print(f"[policy] - {warning}")
+    if int(training_cfg["max_steps"]) >= LONG_RUN_SMOKE_THRESHOLD_STEPS and not args.skip_smoke_check:
+        run_smoke_check(output_dir)
+
     runtime_cfg = configure_torch_runtime(torch, training_cfg)
     corpus_log = corpus_training_log(dataset_cfg)
     fingerprints = dataset_fingerprints(dataset_cfg)
@@ -633,21 +788,30 @@ def main() -> None:
         if any(token_id is None or token_id < 0 for token_id in structural_token_ids):
             raise ValueError(f"Failed to add structural special tokens: {STRUCTURAL_SPECIAL_TOKENS}")
 
-    model_kwargs: dict[str, Any] = {
-        "device_map": "auto",
-        "low_cpu_mem_usage": True,
-    }
+    load_in_4bit = bool(training_cfg.get("load_in_4bit", True))
+    model_kwargs: dict[str, Any] = {}
+    is_quantized = False
+    if load_in_4bit:
+        model_kwargs["device_map"] = "auto"
+    else:
+        model_kwargs["device_map"] = "cuda:0"
+    if bool(training_cfg.get("low_cpu_mem_usage", True)):
+        model_kwargs["low_cpu_mem_usage"] = True
+    else:
+        model_kwargs.pop("low_cpu_mem_usage", None)
     if training_cfg.get("attn_implementation"):
         model_kwargs["attn_implementation"] = training_cfg["attn_implementation"]
-    if bool(training_cfg.get("load_in_4bit", True)):
+    model_dtype = torch.bfloat16 if bool(training_cfg.get("bf16", True)) else torch.float16
+    if load_in_4bit:
+        is_quantized = True
         model_kwargs["quantization_config"] = BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16 if bool(training_cfg.get("bf16", True)) else torch.float16,
+            bnb_4bit_compute_dtype=model_dtype,
             bnb_4bit_use_double_quant=True,
         )
     else:
-        model_kwargs["torch_dtype"] = torch.bfloat16 if bool(training_cfg.get("bf16", True)) else torch.float16
+        model_kwargs["torch_dtype"] = model_dtype
 
     try:
         try:
@@ -662,9 +826,9 @@ def main() -> None:
             model_kwargs.pop("attn_implementation", None)
             model = AutoModelForCausalLM.from_pretrained(base_model, revision=model_revision, **model_kwargs)
     except Exception as exc:
-        if bool(training_cfg.get("load_in_4bit", True)):
+        if load_in_4bit:
             raise SystemExit(
-                "Could not load the model in 4-bit mode. On a 12 GB RTX 5070, 4-bit QLoRA is the expected path.\n"
+                "Could not load the model in 8-bit fallback mode either.\n"
                 "Make sure bitsandbytes is installed and supports your local CUDA/PyTorch build."
             ) from exc
         raise
@@ -672,16 +836,19 @@ def main() -> None:
     if structural_token_ids:
         model.resize_token_embeddings(len(tokenizer))
     model.config.use_cache = False
-    model = prepare_model_for_kbit_training(model)
+    if is_quantized:
+        model = prepare_model_for_kbit_training(model)
     if bool(training_cfg.get("gradient_checkpointing", True)):
         gradient_checkpointing_kwargs = training_cfg.get("gradient_checkpointing_kwargs")
         if isinstance(gradient_checkpointing_kwargs, dict):
-            try:
-                model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
-            except TypeError:
-                print("[runtime] WARNING: gradient_checkpointing_kwargs unsupported; using default checkpointing.")
-                model.gradient_checkpointing_enable()
+            gradient_checkpointing_kwargs = dict(gradient_checkpointing_kwargs)
         else:
+            gradient_checkpointing_kwargs = {}
+        gradient_checkpointing_kwargs.setdefault("use_reentrant", False)
+        try:
+            model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=gradient_checkpointing_kwargs)
+        except TypeError:
+            print("[runtime] WARNING: non-reentrant checkpointing unsupported; using default checkpointing.")
             model.gradient_checkpointing_enable()
 
     dataset_format = infer_dataset_format(Path(dataset_cfg["train_path"]), dataset_cfg)
@@ -746,6 +913,16 @@ def main() -> None:
             print(f"[dataset] tokenized cache metadata mismatch; rebuilding: {tokenized_cache_path}")
 
     if tokenized is None:
+        if "training_text" not in dataset["train"].column_names:
+            print("[dataset] creating training_text column from message/metadata fields")
+            dataset = dataset.map(
+                _normalize_training_text,
+                batched=True,
+                desc="Materializing training_text",
+                num_proc=1,
+            )
+            text_field = "training_text"
+
         tokenized = dataset.map(
             tokenize_batch,
             batched=True,
@@ -828,6 +1005,7 @@ def main() -> None:
         "gradient_accumulation_steps": int(training_cfg["gradient_accumulation_steps"]),
         "bf16": bool(training_cfg.get("bf16", True)),
         "fp16": not bool(training_cfg.get("bf16", True)),
+        "optim": str(training_cfg.get("optim", "adamw_torch" if not is_quantized else "paged_adamw_8bit")),
         "gradient_checkpointing": bool(training_cfg.get("gradient_checkpointing", True)),
         "logging_steps": int(training_cfg.get("logging_steps", max(1, min(10, estimated_total_steps // 10)))),
         "eval_strategy": eval_strategy,
@@ -1061,7 +1239,26 @@ def main() -> None:
         fingerprints=fingerprints,
         tokenization_stats=tokenization_stats,
     )
+    run_ended_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
+    run_wall_seconds = round(time.perf_counter() - run_started, 2)
+    result["run_summary_path"] = str(output_dir / "run_summary.json")
+    run_summary_json, run_summary_md = write_run_summary(
+        output_dir=output_dir,
+        command=command,
+        run_started_at=run_started_at,
+        run_ended_at=run_ended_at,
+        run_wall_seconds=run_wall_seconds,
+        base_model=base_model,
+        dataset_cfg=dataset_cfg,
+        training_cfg=training_cfg,
+        timing_records=timing_callback.records,
+        result=result,
+        policy_warnings=policy_warnings,
+        runtime=runtime_cfg,
+    )
     result["summary_path"] = str(summary_path)
+    result["run_summary_md"] = str(run_summary_md)
+    print(f"[summary] wrote run summary to {run_summary_json}")
     print(f"[summary] wrote training summary to {summary_path}")
     print(json.dumps(result, indent=2))
 

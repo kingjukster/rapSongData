@@ -103,6 +103,20 @@ SAFE_LICENSES = {
     "licensed_or_public_domain",
     "synthetic_transformed",
 }
+_ALLOWED_BASE_MODELS = {
+    "qwen/qwen2.5-7b",
+    "qwen/qwen2.5-7b-instruct",
+}
+
+
+def validate_qwen25_7b_only(model_name: str, *, scope: str) -> str:
+    normalized = (model_name or "").split("@", 1)[0].strip().lower()
+    if normalized not in _ALLOWED_BASE_MODELS:
+        raise ValueError(
+            f"{scope} policy requires Qwen2.5-7B. "
+            f"Use Qwen/Qwen2.5-7B-Instruct or Qwen/Qwen2.5-7B. Received: {model_name!r}"
+        )
+    return normalized
 
 DEFAULT_BANNED_WORDS = {
     "embed",
@@ -907,6 +921,7 @@ def _format_run_summary_markdown(run: Dict[str, Any]) -> str:
         - end: `{run.get('end', '')}`
         - wall_seconds: `{run.get('wall_seconds', 0)}`
         - env: {run.get('env', {})}
+        - meta: {run.get('meta', {})}
         - metrics: {run.get('metrics', {})}
         """
     ).strip() + "\n"
@@ -1058,7 +1073,12 @@ def cmd_build_datasets(args: argparse.Namespace):
 def cmd_generate(args: argparse.Namespace):
     if torch is None:
         raise RuntimeError("PyTorch not available for generation.")
+    validate_qwen25_7b_only(args.model, scope="rap_fast_pipeline generate")
     from transformers import AutoTokenizer, AutoModelForCausalLM
+    try:
+        from transformers import BitsAndBytesConfig
+    except Exception:
+        BitsAndBytesConfig = None  # pragma: no cover - optional in older dependency stacks
 
     prompt = args.prompt
     if args.prompt_file:
@@ -1070,24 +1090,116 @@ def cmd_generate(args: argparse.Namespace):
 
     run_root = Path(args.run_dir)
     run_root.mkdir(parents=True, exist_ok=True)
-    command = ["generate", args.prompt[:40].replace("\n", " ")]
+    command = [
+        "generate",
+        f"model={args.model}",
+        f"max_new_tokens={args.max_new_tokens}",
+        f"temperature={args.temperature}",
+        f"top_p={args.top_p}",
+        f"load_in_4bit={args.load_in_4bit}",
+        f"do_sample={args.do_sample}",
+        f"bf16={args.bf16}",
+        f"prompt_len={len(prompt)}",
+    ]
+    if args.prompt_file:
+        command.append(f"prompt_file={args.prompt_file}")
+    if args.adapter_path:
+        command.append(f"adapter_path={args.adapter_path}")
 
-    with _run_log({"command": command, "generate": True}, run_root):
+    with _run_log(
+        {
+            "command": [str(x) for x in command],
+            "generate": True,
+            "comparability_note": getattr(args, "comparability_note", "default") or "default",
+            "base_model": args.model,
+            "adapter_path": args.adapter_path or "",
+            "dataset_path": "",
+            "output_path": str(run_root),
+            "run_dir": str(run_root),
+            "prompt_length": len(prompt),
+            "max_new_tokens": args.max_new_tokens,
+            "temperature": args.temperature,
+            "top_p": args.top_p,
+            "do_sample": args.do_sample,
+            "bf16": args.bf16,
+            "load_in_4bit": bool(args.load_in_4bit),
+        },
+        run_root,
+    ) as run:
         if torch.cuda.is_available() and hasattr(torch.cuda, "reset_peak_memory_stats"):
             torch.cuda.reset_peak_memory_stats()
+        if torch.cuda.is_available():
+            torch.backends.cuda.matmul.allow_tf32 = True
+            torch.backends.cuda.matmul.allow_fp16_reduced_precision_reduction = True
+            torch.backends.cudnn.benchmark = True
+            try:
+                torch.set_float32_matmul_precision("high")
+            except Exception:
+                pass
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        load_start = time.time()
         tokenizer = AutoTokenizer.from_pretrained(args.model, trust_remote_code=True)
-        model = AutoModelForCausalLM.from_pretrained(
-            args.model,
-            torch_dtype=torch.bfloat16 if args.bf16 else torch.float16,
-            device_map="auto",
-            trust_remote_code=True,
-        )
+        model_kwargs = {
+            "torch_dtype": torch.bfloat16 if args.bf16 else torch.float16,
+            "device_map": "auto",
+            "trust_remote_code": True,
+        }
+        if args.load_in_4bit:
+            if BitsAndBytesConfig is not None:
+                model_kwargs["quantization_config"] = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_use_double_quant=True,
+                    bnb_4bit_quant_type="nf4",
+                    bnb_4bit_compute_dtype=torch.bfloat16 if args.bf16 else torch.float16,
+                )
+                run["metrics"]["quantization"] = "4bit_nf4"
+            else:
+                LOGGER.warning("4-bit generation requested, but BitsAndBytesConfig unavailable; falling back to fp16/bf16.")
+                run["metrics"]["quantization"] = "fallback_fp16_bf16"
+        else:
+            run["metrics"]["quantization"] = "fp16_bf16"
+
+        try:
+            model = AutoModelForCausalLM.from_pretrained(
+                args.model,
+                attn_implementation="sdpa",
+                **model_kwargs,
+            )
+        except TypeError as exc:
+            if "attn_implementation" not in str(exc).lower():
+                raise
+            model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        run["metrics"]["model_load_seconds"] = round(time.time() - load_start, 4)
+
+        if args.adapter_path:
+            try:
+                from peft import PeftModel
+            except Exception as exc:  # pragma: no cover - environment mismatch
+                raise RuntimeError(f"Adapter path requested but PEFT unavailable: {args.adapter_path}") from exc
+            model = PeftModel.from_pretrained(model, args.adapter_path)
+            run["metrics"]["adapter_loaded"] = True
+        else:
+            run["metrics"]["adapter_loaded"] = False
+
         model.eval()
-        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        inputs = tokenizer(prompt, return_tensors="pt")
+        if torch.cuda.is_available() and model is not None:
+            try:
+                target_device = next(model.parameters()).device
+            except Exception:
+                target_device = torch.device("cuda")
+            inputs = {k: v.to(target_device) for k, v in inputs.items()}
+        prompt_len = inputs["input_ids"].shape[-1]
         if args.max_new_tokens <= 0:
             raise ValueError("max_new_tokens must be > 0")
         with torch.inference_mode():
-            start = time.time()
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            gen_start = time.time()
             outputs = model.generate(
                 **inputs,
                 max_new_tokens=args.max_new_tokens,
@@ -1097,17 +1209,25 @@ def cmd_generate(args: argparse.Namespace):
                 use_cache=True,
                 pad_token_id=tokenizer.eos_token_id,
             )
-            wall = time.time() - start
-        text = tokenizer.decode(outputs[0][inputs["input_ids"].shape[-1]:], skip_special_tokens=True)
-        tps = len(outputs[0]) / max(1e-8, wall)
+            if torch.cuda.is_available():
+                torch.cuda.synchronize()
+            wall = time.time() - gen_start
+        generated_token_count = int(outputs.shape[-1] - prompt_len)
+        run["metrics"]["generation_seconds"] = round(wall, 4)
+        run["metrics"]["generated_token_count"] = generated_token_count
+        run["metrics"]["tokens_per_second"] = round(generated_token_count / max(1e-8, wall), 4)
+        run["metrics"]["adapter_path"] = args.adapter_path or ""
+        run["metrics"]["run_dir"] = str(run_root)
+        text = tokenizer.decode(outputs[0][prompt_len:], skip_special_tokens=True)
         result = {
             "prompt": prompt,
             "generated_text": text,
             "wall_seconds": round(wall, 4),
-            "tokens_per_second": round(tps, 4),
-            "generated_token_count": int(outputs.shape[-1] - inputs["input_ids"].shape[-1]),
+            "tokens_per_second": run["metrics"]["tokens_per_second"],
+            "generated_token_count": generated_token_count,
             "model": args.model,
             "adapter_path": args.adapter_path or "",
+            "run_metrics": dict(run["metrics"]),
             "settings": vars(args),
         }
         (run_root / "generation_result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -1271,16 +1391,26 @@ def main():
 def _run_log(ctx: Dict[str, Any], run_root: Path):
     run_root.mkdir(parents=True, exist_ok=True)
     start = time.time()
+    meta_ctx = {
+        k: (
+            str(v)
+            if isinstance(v, Path)
+            else [str(x) if isinstance(x, Path) else x for x in v]
+            if isinstance(v, list)
+            else v
+        )
+        for k, v in ctx.items()
+    }
     run = {
         "start": _now_iso(),
         "command": " ".join(ctx.get("command", [])),
+        "meta": {k: v for k, v in meta_ctx.items() if k != "command"},
         "env": {
             "gpu": torch.cuda.get_device_name(0) if torch and torch.cuda.is_available() else "cpu",
             "cuda": torch.version.cuda if torch else None,
             "pytorch": torch.__version__ if torch else None,
         },
         "metrics": {},
-        "meta": {"stage": "training" if ctx.get("train") else "generation" if ctx.get("generate") else "other"},
     }
     if torch and torch.cuda.is_available():
         if hasattr(torch.cuda, "reset_peak_memory_stats"):
@@ -1300,16 +1430,22 @@ def _run_log(ctx: Dict[str, Any], run_root: Path):
         run["wall_seconds"] = round(end - start, 4)
         if torch and torch.cuda.is_available() and hasattr(torch.cuda, "max_memory_allocated"):
             run["metrics"]["peak_vram_gb"] = round(torch.cuda.max_memory_allocated() / (1024 ** 3), 4)
-        run["metrics"].setdefault("comparability_note", ctx.get("command", []))
+        run["metrics"].setdefault("comparability_note", str(ctx.get("comparability_note", "default")))
         run_path = run_root / "run_summary.json"
         md = _format_run_summary_markdown(run)
         (run_root / "run_summary.md").write_text(md, encoding="utf-8")
         with run_path.open("w", encoding="utf-8") as f:
             json.dump(run, f, ensure_ascii=False, indent=2)
         _append_analytics_csv(run, run_root)
+        if not run_root.joinpath("run_metrics.jsonl").exists():
+            with run_root.joinpath("run_metrics.jsonl").open("w", encoding="utf-8") as f:
+                f.write("")
+        with run_root.joinpath("run_metrics.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(run, ensure_ascii=False) + "\n")
 
 
 def cmd_train(args: argparse.Namespace):
+    validate_qwen25_7b_only(args.model, scope="rap_fast_pipeline train")
     run_root = Path(args.run_dir)
     run_root.mkdir(parents=True, exist_ok=True)
     seq_len = 512 if args.smoke else args.sequence_length
@@ -1345,25 +1481,45 @@ def cmd_train(args: argparse.Namespace):
         command += ["--gradient_accumulation_steps", str(ga_steps)]
         command += ["--gradient_checkpointing", "true" if args.gradient_checkpointing else "false"]
         command += ["--max_seq_length", str(seq_len)]
-        command += ["--comparability_note", "smoke" if args.smoke else "default"]
         if args.use_8bit_adam:
             command += ["--optim", "paged_adamw_8bit"]
 
-    with _run_log({"command": [str(x) for x in command], "train": True}, run_root / "run"):
+    with _run_log(
+        {
+            "command": [str(x) for x in command],
+            "train": True,
+            "comparability_note": comparability_note,
+            "run_stage": stage,
+            "dataset_path": str(args.train_file),
+            "output_path": str(run_root / "model_output"),
+            "base_model": args.model,
+            "load_in_4bit": bool(getattr(args, "load_in_4bit", False)),
+            "use_8bit_adam": bool(getattr(args, "use_8bit_adam", False)),
+            "sequence_length": seq_len,
+            "gradient_accumulation_steps": ga_steps,
+            "max_steps": max_steps,
+            "smoke_mode": bool(args.smoke),
+        },
+        run_root / "run",
+    ):
         start = time.time()
-        proc = subprocess.run(command, text=True, capture_output=True)
+        proc = subprocess.run(command, text=True, capture_output=True, env=os.environ.copy())
         elapsed = round(time.time() - start, 4)
         (run_root / "run" / "train_stdout.txt").write_text(proc.stdout, encoding="utf-8")
         (run_root / "run" / "train_stderr.txt").write_text(proc.stderr, encoding="utf-8")
         if proc.returncode != 0:
             raise RuntimeError(f"Training command failed ({proc.returncode}): {proc.stderr[:1200]}")
-        run_summary = {
-            "wall_seconds": elapsed,
-            "seq_len": seq_len,
-            "gradient_accumulation_steps": ga_steps,
-            "steps": max_steps,
-        }
-        (run_root / "run" / "run_metrics.json").write_text(json.dumps(run_summary, ensure_ascii=False, indent=2), encoding="utf-8")
+        run["metrics"]["train_wall_seconds"] = elapsed
+        run["metrics"]["seq_len"] = seq_len
+        run["metrics"]["gradient_accumulation_steps"] = ga_steps
+        run["metrics"]["steps"] = max_steps
+        run["metrics"]["smoke_mode"] = bool(args.smoke)
+        run["metrics"]["load_in_4bit"] = bool(getattr(args, "load_in_4bit", False))
+        run["metrics"]["use_8bit_adam"] = bool(getattr(args, "use_8bit_adam", False))
+        run["metrics"]["seconds_per_step"] = round(elapsed / max(1, max_steps), 4)
+        run["metrics"]["train_dir"] = str(run_root)
+        run["metrics"]["command_hash"] = hashlib.md5(" ".join(str(x) for x in command).encode("utf-8")).hexdigest()
+        (run_root / "run" / "run_metrics.json").write_text(json.dumps(run["metrics"], ensure_ascii=False, indent=2), encoding="utf-8")
         LOGGER.info("Training complete in %ss", elapsed)
 
 
@@ -1409,9 +1565,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p_train.add_argument("--per-device-train-batch-size", type=int, default=1)
     p_train.add_argument("--gradient-accumulation-steps", type=int, default=4)
     p_train.add_argument("--sequence-length", type=int, default=768)
-    p_train.add_argument("--use-8bit-adam", action="store_true")
+    p_train.add_argument("--use-8bit-adam", action=argparse.BooleanOptionalAction, default=True)
+    p_train.add_argument("--load-in-4bit", action=argparse.BooleanOptionalAction, default=True)
+    p_train.add_argument("--skip-smoke-check", action="store_true")
     p_train.add_argument("--gradient-checkpointing", action="store_true")
     p_train.add_argument("--smoke", action="store_true", help="Run short smoke mode with 200 steps at 512 sequence length.")
+    p_train.add_argument("--comparability-note", default="default")
     p_train.set_defaults(func=cmd_train)
 
     p_gen = sub.add_parser("generate", help="Run controlled generation with timing + VRAM logging.")
@@ -1425,6 +1584,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument("--top-p", type=float, default=0.95)
     p_gen.add_argument("--do-sample", action="store_true")
     p_gen.add_argument("--bf16", action="store_true")
+    p_gen.add_argument("--load-in-4bit", action=argparse.BooleanOptionalAction, default=True)
+    p_gen.add_argument("--comparability-note", default="default")
     p_gen.set_defaults(func=cmd_generate)
     p_audit = sub.add_parser("audit", help="Build a compact audit markdown report from curated parquet and generated JSONL files.")
     p_audit.add_argument("--input", required=True)
