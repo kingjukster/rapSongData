@@ -1,0 +1,23 @@
+﻿# Session Checkpoint: Post-Sweep Extension Active
+
+- Timestamp (UTC): ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + '
+- Extended variant schedule update applied at `scripts/run_autonomous_quality_loop.py`:
+  - Added round 31: `emotion-top105-focused`, `emotion-top300-open`
+  - Added round 32: `metaphor-top120-rich`, `metaphor-top310-wide`
+- Loop runtime evidence (live):
+  - Loop process PID: 17356 (running)
+  - `run_history` count: ' + $s.run_history.Count + '
+  - `post_sweep_round_counter`: ' + $s.post_sweep_round_counter + '
+  - Latest run id: ' + ($s.run_history[-1].run_id) + '
+  - Latest decision: ' + ($s.run_history[-1].decision) + '
+  - Latest candidate: ' + ($s.run_history[-1].candidate_name) + '
+- New run directories already emitted:
+  - `runs/qwen3_rap_quality_autonomous_loop/20260707_013401_435939_post-qwen3-4b-sweep-sft-unclean281-12line-melodic-eva-emotion-top105-focused`
+  - `runs/qwen3_rap_quality_autonomous_loop/20260707_013409_761159_post-qwen3-4b-sweep-sft-unclean281-12line-melodic-eva-emotion-top105-focused-judge`
+  - `runs/qwen3_rap_quality_autonomous_loop/20260707_013417_376247_post-qwen3-4b-sweep-sft-unclean281-12line-melodic-eva-emotion-top300-open`
+  - `runs/qwen3_rap_quality_autonomous_loop/20260707_013426_008370_post-qwen3-4b-sweep-sft-unclean281-12line-melodic-eva-emotion-top300-open-judge`
+  - `runs/qwen3_rap_quality_autonomous_loop/20260707_013433_619370_post-qwen3-4b-sweep-sft-unclean281-12line-melodic-eva-metaphor-top120-rich`
+- Next action:
+  - Continue monitoring until the 4-hour window reaches budget while keeping all run artifacts in:
+    - `runs/qwen3_rap_quality_autonomous_loop`
+    - `docs/qwen3_rap_quality_autonomous_loop`
