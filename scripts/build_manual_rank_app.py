@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Build a self-contained HTML app for manual ranking auto-judge candidates."""
+"""DEPRECATED: build a legacy manual-ranking app.
+
+The active quality-goal workflow uses automated blind judging and does not
+consume human review artifacts. This script remains only for historical runs.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +13,7 @@ import html
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -1073,6 +1078,10 @@ def build_html(
 
 
 def main() -> int:
+    print(
+        "DEPRECATED: manual review is not part of the active quality-goal workflow.",
+        file=sys.stderr,
+    )
     args = parse_args()
     if args.limit <= 0:
         raise ValueError("--limit must be > 0")

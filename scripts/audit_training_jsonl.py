@@ -44,7 +44,12 @@ def parse_args() -> argparse.Namespace:
         help="Fail rows whose target cannot be recovered from metadata or prompt text.",
     )
     parser.add_argument("--require-provenance", action="store_true")
-    parser.add_argument("--require-human-review", action="store_true")
+    parser.add_argument(
+        "--require-human-review",
+        action="store_true",
+        help="DEPRECATED legacy gate; active quality-goal training uses automated calibration.",
+    )
+    parser.add_argument("--require-automated-calibration", action="store_true")
     parser.add_argument("--min-preference-score-delta", type=float, default=0.0)
     parser.add_argument("--no-fail", action="store_true")
     return parser.parse_args()
@@ -199,6 +204,38 @@ def verified_source_provenance(meta: dict[str, Any]) -> bool:
         and bool(str(rng.get("protocol") or "").strip())
         and isinstance(rng.get("manual_seed"), int)
     )
+
+
+def verified_automated_calibration(meta: dict[str, Any]) -> bool:
+    calibration = meta.get("automated_calibration")
+    if not isinstance(calibration, dict):
+        return False
+    if calibration.get("label_source") != "automated_consensus":
+        return False
+    if calibration.get("human_reviewed") is not False:
+        return False
+    required = ("criteria_version", "judge_provider", "judge_model")
+    if not all(str(calibration.get(key) or "").strip() for key in required):
+        return False
+    try:
+        if int(calibration.get("judge_overall_quality") or 0) < 4:
+            return False
+        if float(calibration.get("calibrated_review_score") or 0.0) < float(
+            calibration.get("minimum_calibrated_score") or 0.0
+        ):
+            return False
+    except (TypeError, ValueError):
+        return False
+    dimensions = calibration.get("judge_dimension_scores")
+    minimums = calibration.get("required_dimension_minimums")
+    if not isinstance(dimensions, dict) or not isinstance(minimums, dict):
+        return False
+    try:
+        return all(int(dimensions.get(name) or 0) >= int(minimum) for name, minimum in minimums.items())
+    except (TypeError, ValueError):
+        return False
+
+
 def add_issue(
     issues: list[dict[str, Any]],
     *,
@@ -229,6 +266,7 @@ def audit_split(
     require_explicit_target: bool = False,
     require_provenance: bool = False,
     require_human_review: bool = False,
+    require_automated_calibration: bool = False,
 ) -> dict[str, Any]:
     rows, parse_errors = read_jsonl(path)
     issues: list[dict[str, Any]] = []
@@ -244,6 +282,7 @@ def audit_split(
     missing_targets: list[dict[str, Any]] = []
     missing_provenance: list[dict[str, Any]] = []
     missing_human_review: list[dict[str, Any]] = []
+    missing_automated_calibration: list[dict[str, Any]] = []
     control_token_hits: list[dict[str, Any]] = []
     ids: list[str] = []
     prompt_keys: list[str] = []
@@ -296,6 +335,8 @@ def audit_split(
             missing_provenance.append({"row": index, "id": row_id})
         if not verified_human_review(meta):
             missing_human_review.append({"row": index, "id": row_id})
+        if not verified_automated_calibration(meta):
+            missing_automated_calibration.append({"row": index, "id": row_id})
         if any(token in assistant for token in CONTROL_TOKENS):
             control_token_hits.append({"row": index, "id": row_id})
     duplicate_ids = [
@@ -341,17 +382,28 @@ def audit_split(
         examples=missing_provenance[:5],
         severity="hard" if require_provenance else "warning",
     )
-    add_issue(
-        issues,
-        code="missing_verified_human_review",
-        message=(
-            f"{split} rows lack an attested, blinded human keep with reviewer/timestamp/rubric "
-            "metadata and overall rating >= 4."
-        ),
-        count=len(missing_human_review),
-        examples=missing_human_review[:5],
-        severity="hard" if require_human_review else "warning",
-    )
+    if require_human_review:
+        add_issue(
+            issues,
+            code="missing_verified_human_review",
+            message=(
+                f"{split} rows lack an attested, blinded human keep with reviewer/timestamp/rubric "
+                "metadata and overall rating >= 4."
+            ),
+            count=len(missing_human_review),
+            examples=missing_human_review[:5],
+        )
+    if require_automated_calibration:
+        add_issue(
+            issues,
+            code="missing_verified_automated_calibration",
+            message=(
+                f"{split} rows lack the automated-consensus criteria, judge evidence, score floor, "
+                "or dimension minimums."
+            ),
+            count=len(missing_automated_calibration),
+            examples=missing_automated_calibration[:5],
+        )
     add_issue(
         issues,
         code="assistant_control_tokens",
@@ -641,6 +693,7 @@ def main() -> int:
         "require_explicit_target": args.require_explicit_target,
         "require_provenance": args.require_provenance,
         "require_human_review": args.require_human_review,
+        "require_automated_calibration": args.require_automated_calibration,
     }
     train = audit_split(args.train, "train", args.target_line_count, **split_options)
     validation = audit_split(args.validation, "validation", args.target_line_count, **split_options)

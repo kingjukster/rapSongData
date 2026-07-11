@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a strict exact-12-line SFT package from attested human reviews."""
+"""DEPRECATED: rebuild the legacy human-reviewed SFT package for history only."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import re
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime
 from difflib import SequenceMatcher
@@ -347,6 +348,10 @@ def training_record(row: dict[str, Any], split: str) -> dict[str, Any]:
 
 
 def main() -> int:
+    print(
+        "DEPRECATED: use build_auto_calibrated_12line_sft.py; human review is retired.",
+        file=sys.stderr,
+    )
     args = parse_args()
     queue_rows = read_jsonl(args.queue)
     queue_by_id = {str(row.get("candidate_id") or row.get("row_id")): row for row in queue_rows}

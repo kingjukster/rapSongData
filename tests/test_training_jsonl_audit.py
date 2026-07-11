@@ -36,6 +36,76 @@ def twelve_lines(prefix: str) -> str:
 
 
 class TrainingJsonlAuditTests(unittest.TestCase):
+    def test_automated_calibration_gate_accepts_explicit_consensus_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train = tmp_path / "train.jsonl"
+            validation = tmp_path / "validation.jsonl"
+            out = tmp_path / "audit.json"
+
+            def calibrated(row: dict, candidate: str) -> dict:
+                row["metadata"]["license_scope"] = "synthetic_model_generated_local_audit"
+                row["metadata"]["source_provenance"] = {
+                    "candidate_id": candidate,
+                    "judge_source_sha256": "a" * 64,
+                    "generation_source_sha256": "b" * 64,
+                    "generation_summary_sha256": "c" * 64,
+                    "generation_run_id": "generation",
+                    "judge_run_id": "judge",
+                    "model_id": "Qwen/Qwen3-4B",
+                    "model_revision": "d" * 40,
+                    "model_revision_source": "test",
+                    "created_at": "2026-07-10T12:00:00+00:00",
+                    "rng_provenance": {"protocol": "strict_single_row_seed", "manual_seed": 1},
+                }
+                row["metadata"]["automated_calibration"] = {
+                    "label_source": "automated_consensus",
+                    "human_reviewed": False,
+                    "criteria_version": "automated_consensus_v2",
+                    "judge_provider": "openai_api",
+                    "judge_model": "test-judge",
+                    "judge_overall_quality": 4,
+                    "calibrated_review_score": 3.8,
+                    "minimum_calibrated_score": 3.5,
+                    "judge_dimension_scores": {"imagery": 4, "scene_coherence": 4},
+                    "required_dimension_minimums": {"imagery": 3, "scene_coherence": 4},
+                }
+                return row
+
+            train.write_text(
+                json.dumps(calibrated(chat_record("train-1", "Prompt A", twelve_lines("train"), "prompt-a"), "a")) + "\n",
+                encoding="utf-8",
+            )
+            validation.write_text(
+                json.dumps(
+                    calibrated(
+                        chat_record("validation-1", "Prompt B", twelve_lines("valid"), "prompt-b", "validation"),
+                        "b",
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "audit_training_jsonl.py"),
+                    "--train",
+                    str(train),
+                    "--validation",
+                    str(validation),
+                    "--out",
+                    str(out),
+                    "--require-provenance",
+                    "--require-automated-calibration",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_request_aware_targets_do_not_force_every_row_to_twelve(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)

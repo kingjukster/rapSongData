@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a blinded, provenance-aware review queue for the 12-line quality goal."""
+"""DEPRECATED: build the legacy human-review queue for historical reproduction."""
 
 from __future__ import annotations
 
@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import random
+import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -323,6 +324,10 @@ def generation_rng_provenance(
 
 
 def main() -> int:
+    print(
+        "DEPRECATED: use build_auto_calibrated_12line_sft.py; human review is retired.",
+        file=sys.stderr,
+    )
     args = parse_args()
     if not 100 <= args.target_count <= 300:
         raise ValueError("--target-count must be between 100 and 300")

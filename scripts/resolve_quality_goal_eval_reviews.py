@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Resolve completed blinded quality-evaluation reviews to model labels."""
+"""DEPRECATED: resolve legacy human evaluation reviews to model labels."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +76,10 @@ def resolve_reviews(packet: dict[str, Any], private_key: dict[str, Any]) -> list
 
 
 def main() -> int:
+    print(
+        "DEPRECATED: active evaluation uses judge_quality_goal_eval_packet_openai.py.",
+        file=sys.stderr,
+    )
     args = parse_args()
     packet = read_object(args.reviewed_packet)
     private_key = read_object(args.private_key)

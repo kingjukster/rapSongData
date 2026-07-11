@@ -14,9 +14,9 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIGS = [
-    Path("configs/training/local_cuda_qwen3_4b_12line_human_v1_e1.json"),
-    Path("configs/training/local_cuda_qwen3_4b_12line_human_v1_e2.json"),
-    Path("configs/training/local_cuda_qwen3_4b_12line_human_v1_e3.json"),
+    Path("configs/training/local_cuda_qwen3_4b_12line_auto_v2_e1.json"),
+    Path("configs/training/local_cuda_qwen3_4b_12line_auto_v2_e2.json"),
+    Path("configs/training/local_cuda_qwen3_4b_12line_auto_v2_e3.json"),
 ]
 DEV_PROMPTS = Path("configs/prompts/quality_goal_dev_prompts.json")
 CONFIRMATION_PROMPTS = Path("configs/prompts/quality_goal_confirmation_prompts.json")
@@ -32,7 +32,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--run-dir",
         type=Path,
-        default=Path("runs/qwen3_4b_12line_human_v1_matrix"),
+        default=Path("runs/qwen3_4b_12line_auto_v2_matrix"),
     )
     parser.add_argument(
         "--prepare-only",
@@ -86,7 +86,15 @@ def validate_matrix(configs: list[tuple[Path, dict[str, Any]]]) -> dict[str, Any
 
         comparable_dataset = {
             key: dataset.get(key)
-            for key in ("train_path", "validation_path", "test_path", "manifest_path", "text_field", "format")
+            for key in (
+                "train_path",
+                "validation_path",
+                "test_path",
+                "manifest_path",
+                "preference_path",
+                "text_field",
+                "format",
+            )
         }
         seed = (
             int(training.get("seed", -1)),
@@ -183,14 +191,14 @@ def main() -> int:
     dataset = configs[0][1]["dataset"]
     required_paths = [
         Path(dataset[key])
-        for key in ("train_path", "validation_path", "test_path", "manifest_path")
+        for key in ("train_path", "validation_path", "test_path", "manifest_path", "preference_path")
     ]
     missing_paths = [str(path) for path in required_paths if not path.exists()]
     if missing_paths:
         final = {
-            "status": "human_review_data_gate_not_met",
+            "status": "automated_calibration_data_gate_not_met",
             "missing_paths": missing_paths,
-            "message": "Build at least 100 eligible, provenance-verified human reviews before training.",
+            "message": "Build the provenance-verified automated consensus dataset before training.",
         }
         write_json(args.run_dir / "final_result.json", final)
         print(json.dumps(final, indent=2), file=sys.stderr)
@@ -198,11 +206,16 @@ def main() -> int:
 
     manifest = read_json(required_paths[3])
     counts = manifest.get("counts") if isinstance(manifest.get("counts"), dict) else {}
-    if manifest.get("status") != "training_ready" or int(counts.get("verified_human_unique") or 0) < 100:
+    if (
+        manifest.get("status") != "training_ready"
+        or manifest.get("label_policy") != "automated_consensus_no_human_review"
+        or int(counts.get("automated_consensus_unique") or 0) < 100
+    ):
         final = {
-            "status": "human_review_manifest_gate_failed",
+            "status": "automated_calibration_manifest_gate_failed",
             "manifest_status": manifest.get("status"),
-            "verified_human_unique": counts.get("verified_human_unique"),
+            "label_policy": manifest.get("label_policy"),
+            "automated_consensus_unique": counts.get("automated_consensus_unique"),
         }
         write_json(args.run_dir / "final_result.json", final)
         return 2
@@ -243,10 +256,18 @@ def main() -> int:
             "12",
             "--require-explicit-target",
             "--require-provenance",
-            "--require-human-review",
+            "--require-automated-calibration",
         ]
         if include_manifest:
             command.extend(["--manifest", str(required_paths[3])])
+            command.extend(
+                [
+                    "--preference-pairs",
+                    str(required_paths[4]),
+                    "--min-preference-score-delta",
+                    "0.75",
+                ]
+            )
         result = run_logged(command, args.run_dir / f"data_audit_{name}")
         audit_results.append({"name": name, **result})
         if result["returncode"] != 0:

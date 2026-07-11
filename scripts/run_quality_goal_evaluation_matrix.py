@@ -85,8 +85,22 @@ def validate_stage(stage: str, winner: str | None) -> list[str]:
             raise ValueError("--winner is only valid for the confirmation stage")
         return ["base", *ADAPTER_LABELS]
     if winner not in ADAPTER_LABELS:
-        raise ValueError("Confirmation requires an explicit --winner of e1, e2, or e3")
+        raise ValueError("Confirmation requires the automated development winner e1, e2, or e3")
     return ["base", winner]
+
+
+def resolve_stage_winner(stage: str, winner: str | None, run_dir: Path) -> str | None:
+    if stage != "confirmation" or winner is not None:
+        return winner
+    summary_path = absolute(run_dir / "development" / "automated_judge" / "summary.json")
+    if not summary_path.is_file():
+        raise ValueError(
+            "Confirmation needs a completed automated development judge summary or an explicit --winner."
+        )
+    selected = str(read_json(summary_path).get("selected_adapter") or "")
+    if selected not in ADAPTER_LABELS:
+        raise ValueError("Automated development summary has no valid selected_adapter")
+    return selected
 
 
 def load_and_validate_prompts(stage: str, stage_config: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
@@ -191,10 +205,12 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
         load_and_validate_prompts(stage, stages[stage])
 
     policy = config.get("selection_policy") or {}
-    if policy.get("auto_select_winner") is not False:
-        raise ValueError("selection_policy.auto_select_winner must be false")
-    if policy.get("confirmation_requires_explicit_winner") is not True:
-        raise ValueError("confirmation must require an explicit winner")
+    if policy.get("selection_mode") != "automated_blind_openai_judge":
+        raise ValueError("selection_policy.selection_mode must use the automated blind judge")
+    if policy.get("auto_select_winner") is not True:
+        raise ValueError("selection_policy.auto_select_winner must be true")
+    if policy.get("confirmation_requires_explicit_winner") is not False:
+        raise ValueError("confirmation must consume the automated winner")
     if policy.get("allowed_winners") != list(ADAPTER_LABELS):
         raise ValueError("allowed_winners must be e1, e2, and e3")
     promotion = config.get("promotion") if isinstance(config.get("promotion"), dict) else {}
@@ -209,7 +225,16 @@ def validate_config(config: dict[str, Any]) -> dict[str, Any]:
     for key, expected in locked_promotion.items():
         if promotion.get(key) != expected:
             raise ValueError(f"promotion.{key} must be locked to {expected!r}")
-    for key in ("resolve_reviews_script", "gate_script"):
+    automated_judge = config.get("automated_judge") if isinstance(config.get("automated_judge"), dict) else {}
+    if not str(automated_judge.get("script") or "").strip():
+        raise ValueError("automated_judge.script is required")
+    if int(automated_judge.get("votes_per_comparison") or 0) < 3 or int(
+        automated_judge.get("votes_per_comparison") or 0
+    ) % 2 == 0:
+        raise ValueError("automated_judge.votes_per_comparison must be an odd integer >= 3")
+    if automated_judge.get("human_review_used") is not False:
+        raise ValueError("automated_judge.human_review_used must be false")
+    for key in ("gate_script",):
         if not str(promotion.get(key) or "").strip():
             raise ValueError(f"promotion.{key} is required")
     return config
@@ -319,6 +344,56 @@ def packet_command(
     return command
 
 
+def automated_judge_command(config: dict[str, Any], *, packet_dir: Path, output_dir: Path) -> list[str]:
+    judge = config["automated_judge"]
+    return [
+        sys.executable,
+        "-u",
+        str(judge["script"]),
+        "--packet",
+        str(packet_dir / "comparison_packet.json"),
+        "--private-key",
+        str(packet_dir / "comparison_alias_key.private.json"),
+        "--output-dir",
+        str(output_dir),
+        "--model",
+        str(judge.get("default_model") or "gpt-4.1-mini"),
+        "--votes-per-comparison",
+        str(judge["votes_per_comparison"]),
+        "--temperature",
+        str(judge.get("temperature", 0.0)),
+        "--max-retries",
+        str(judge.get("max_retries", 3)),
+    ]
+
+
+def promotion_command(
+    config: dict[str, Any],
+    *,
+    packet_dir: Path,
+    judge_dir: Path,
+    winner: str,
+    output_path: Path,
+) -> list[str]:
+    return [
+        sys.executable,
+        "-u",
+        str(config["promotion"]["gate_script"]),
+        "--base-scored",
+        str(packet_dir / "raw_scored" / "base.jsonl"),
+        "--candidate-scored",
+        str(packet_dir / "raw_scored" / f"{winner}.jsonl"),
+        "--preferences",
+        str(judge_dir / "resolved_preferences.json"),
+        "--base-label",
+        "base",
+        "--candidate-label",
+        winner,
+        "--out",
+        str(output_path),
+    ]
+
+
 def build_plan(
     config_path: Path,
     config: dict[str, Any],
@@ -391,13 +466,26 @@ def build_plan(
         prompt_file=prompt_file,
         output_dir=packet_dir,
     )
+    judge_dir = stage_dir / "automated_judge"
+    judge = automated_judge_command(config, packet_dir=packet_dir, output_dir=judge_dir)
+    promotion = (
+        promotion_command(
+            config,
+            packet_dir=packet_dir,
+            judge_dir=judge_dir,
+            winner=str(winner),
+            output_path=stage_dir / "promotion_result.json",
+        )
+        if stage == "confirmation" and winner
+        else None
+    )
     return {
         "schema_version": 1,
         "status": "prepared",
         "created_at": timestamp(),
         "stage": stage,
         "selected_development_winner": winner,
-        "winner_selection": "explicit_only" if stage == "confirmation" else "disabled",
+        "winner_selection": "automated_consensus" if stage == "development" else "automated_development_winner",
         "base_model": config["base_model"],
         "model_revision": config["model_revision"],
         "seed": config["seed"],
@@ -412,6 +500,8 @@ def build_plan(
         },
         "runs": runs,
         "packet": {"output_dir": str(packet_dir), "command": packet},
+        "automated_judge": {"output_dir": str(judge_dir), "command": judge},
+        "promotion": {"command": promotion, "output": str(stage_dir / "promotion_result.json")} if promotion else None,
         "input_hashes": hashes,
     }
 
@@ -448,10 +538,10 @@ def validate_runtime_inputs(plan: dict[str, Any], config: dict[str, Any]) -> Non
     packet_script = absolute(config["evaluation_packet"]["script"])
     if not packet_script.is_file():
         raise FileNotFoundError(f"Evaluation packet builder not found: {packet_script}")
-    for key in ("resolve_reviews_script", "gate_script"):
-        script_path = absolute(config["promotion"][key])
+    for script_path_text in (config["automated_judge"]["script"], config["promotion"]["gate_script"]):
+        script_path = absolute(script_path_text)
         if not script_path.is_file():
-            raise FileNotFoundError(f"Promotion workflow script not found: {script_path}")
+            raise FileNotFoundError(f"Automated evaluation workflow script not found: {script_path}")
     for path_text in config["evaluation_packet"].get("training_jsonl") or []:
         path = absolute(path_text)
         if not path.is_file():
@@ -468,6 +558,11 @@ def assert_fresh_outputs(plan: dict[str, Any]) -> None:
     packet_dir = absolute(plan["packet"]["output_dir"])
     if packet_dir.exists():
         existing.append(str(packet_dir))
+    judge_dir = absolute(plan["automated_judge"]["output_dir"])
+    if judge_dir.exists():
+        existing.append(str(judge_dir))
+    if plan.get("promotion") and absolute(plan["promotion"]["output"]).exists():
+        existing.append(str(absolute(plan["promotion"]["output"])))
     if existing:
         raise FileExistsError(
             "Fresh evaluation outputs are required; choose a new --run-dir or archive these paths: "
@@ -534,11 +629,12 @@ def validate_generation_result(run: dict[str, Any]) -> dict[str, Any]:
 def main() -> int:
     args = parse_args()
     config = validate_config(read_json(args.config))
+    winner = resolve_stage_winner(args.stage, args.winner, args.run_dir)
     plan = build_plan(
         args.config,
         config,
         stage=args.stage,
-        winner=args.winner,
+        winner=winner,
         run_dir=args.run_dir,
     )
     stage_dir = args.run_dir / args.stage
@@ -548,6 +644,8 @@ def main() -> int:
         {
             "generation": [run["command"] for run in plan["runs"]],
             "evaluation_packet": plan["packet"]["command"],
+            "automated_judge": plan["automated_judge"]["command"],
+            "promotion": (plan.get("promotion") or {}).get("command"),
         },
     )
     print(json.dumps(plan, indent=2))
@@ -598,29 +696,72 @@ def main() -> int:
         write_json(stage_dir / "final_result.json", final)
         return 2
     output_hashes["evaluation_manifest"] = sha256_file(packet_manifest)
-    status = "awaiting_blind_winner_selection" if args.stage == "development" else "confirmation_packet_ready"
+    judge_attempt = {
+        "kind": "automated_judge",
+        **run_logged(plan["automated_judge"]["command"], stage_dir / "logs" / "automated_judge"),
+    }
+    attempts.append(judge_attempt)
+    write_json(stage_dir / "attempts.json", {"attempts": attempts})
+    if judge_attempt["returncode"] != 0:
+        final = {"status": "automated_judge_failed", "stage": args.stage, "attempts": attempts}
+        write_json(stage_dir / "final_result.json", final)
+        return int(judge_attempt["returncode"] or 1)
+    judge_summary_path = absolute(plan["automated_judge"]["output_dir"]) / "summary.json"
+    preferences_path = absolute(plan["automated_judge"]["output_dir"]) / "resolved_preferences.json"
+    if not judge_summary_path.is_file() or not preferences_path.is_file():
+        final = {"status": "automated_judge_validation_failed", "stage": args.stage}
+        write_json(stage_dir / "final_result.json", final)
+        return 2
+    judge_summary = read_json(judge_summary_path)
+    output_hashes["automated_judge_summary"] = sha256_file(judge_summary_path)
+    output_hashes["automated_preferences"] = sha256_file(preferences_path)
+
+    promotion_report = None
+    if args.stage == "confirmation":
+        promotion_attempt = {
+            "kind": "promotion_gate",
+            **run_logged(plan["promotion"]["command"], stage_dir / "logs" / "promotion_gate"),
+        }
+        attempts.append(promotion_attempt)
+        write_json(stage_dir / "attempts.json", {"attempts": attempts})
+        promotion_path = absolute(plan["promotion"]["output"])
+        if not promotion_path.is_file():
+            final = {"status": "promotion_evidence_missing", "stage": args.stage, "attempts": attempts}
+            write_json(stage_dir / "final_result.json", final)
+            return 2
+        promotion_report = read_json(promotion_path)
+        output_hashes["promotion_result"] = sha256_file(promotion_path)
+        status = "promotion_passed" if promotion_report.get("passed") else "promotion_failed"
+    else:
+        selected = str(judge_summary.get("selected_adapter") or "")
+        if selected not in ADAPTER_LABELS:
+            final = {"status": "automated_winner_selection_failed", "judge_summary": judge_summary}
+            write_json(stage_dir / "final_result.json", final)
+            return 2
+        status = "automated_winner_selected"
     final = {
         "status": status,
         "stage": args.stage,
-        "selected_development_winner": args.winner,
-        "auto_selected_winner": None,
+        "selected_development_winner": winner if args.stage == "confirmation" else judge_summary.get("selected_adapter"),
+        "auto_selected_winner": judge_summary.get("selected_adapter"),
+        "human_review_used": False,
+        "judge_summary": judge_summary,
+        "promotion": promotion_report,
         "output_hashes": output_hashes,
         "evaluation_packet": str(plan["packet"]["output_dir"]),
         "attempts": attempts,
     }
     if args.stage == "development":
         final["next_step"] = (
-            "Complete blind review, then run confirmation with an explicit "
-            "--winner e1, --winner e2, or --winner e3."
+            "Run confirmation; the orchestrator will consume this automated development winner."
         )
     else:
         final["next_step"] = (
-            "Complete and resolve the blinded base-versus-winner reviews, then run "
-            "scripts/evaluate_quality_goal_promotion.py; promote only if every gate passes."
+            "Promote only when status is promotion_passed; otherwise retain the base model."
         )
     write_json(stage_dir / "final_result.json", final)
     print(json.dumps(final, indent=2))
-    return 0
+    return 0 if status != "promotion_failed" else 1
 
 
 if __name__ == "__main__":

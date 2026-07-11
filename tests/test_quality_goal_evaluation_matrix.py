@@ -40,7 +40,7 @@ def test_development_plan_has_exact_raw_generation_commands(tmp_path: Path) -> N
     assert plan["prompt_count"] == 48
     assert plan["samples_per_prompt"] == 2
     assert plan["expected_rows_per_model"] == 96
-    assert plan["winner_selection"] == "disabled"
+    assert plan["winner_selection"] == "automated_consensus"
     assert plan["selected_development_winner"] is None
     assert all(run["expected_rows"] == 96 for run in plan["runs"])
 
@@ -75,12 +75,14 @@ def test_development_plan_has_exact_raw_generation_commands(tmp_path: Path) -> N
     assert packet_command.count("--generation") == 4
     assert packet_command.count("--train-jsonl") == 3
     assert option(packet_command, "--seed") == "20260710"
+    assert "judge_quality_goal_eval_packet_openai.py" in " ".join(plan["automated_judge"]["command"])
+    assert option(plan["automated_judge"]["command"], "--votes-per-comparison") == "3"
 
 
-def test_confirmation_requires_and_uses_explicit_development_winner(tmp_path: Path) -> None:
+def test_confirmation_uses_automated_development_winner(tmp_path: Path) -> None:
     locked = MODULE.validate_config(config())
 
-    with pytest.raises(ValueError, match="explicit --winner"):
+    with pytest.raises(ValueError, match="automated development winner"):
         MODULE.build_plan(CONFIG_PATH, locked, stage="confirmation", winner=None, run_dir=tmp_path)
     with pytest.raises(ValueError, match="only valid for the confirmation"):
         MODULE.build_plan(CONFIG_PATH, locked, stage="development", winner="e2", run_dir=tmp_path)
@@ -99,16 +101,22 @@ def test_confirmation_requires_and_uses_explicit_development_winner(tmp_path: Pa
     assert plan["selected_development_winner"] == "e2"
     assert all(run["expected_rows"] == 48 for run in plan["runs"])
     assert plan["packet"]["command"].count("--generation") == 2
+    assert plan["promotion"]["command"] is not None
+
+    summary_dir = tmp_path / "development" / "automated_judge"
+    summary_dir.mkdir(parents=True)
+    (summary_dir / "summary.json").write_text(json.dumps({"selected_adapter": "e2"}), encoding="utf-8")
+    assert MODULE.resolve_stage_winner("confirmation", None, tmp_path) == "e2"
 
 
-def test_config_rejects_postprocessing_or_automatic_selection() -> None:
+def test_config_rejects_postprocessing_or_manual_selection() -> None:
     changed = copy.deepcopy(config())
     changed["generation"]["enforce_target_line_count"] = True
     with pytest.raises(ValueError, match="enforce_target_line_count"):
         MODULE.validate_config(changed)
 
     changed = copy.deepcopy(config())
-    changed["selection_policy"]["auto_select_winner"] = True
+    changed["selection_policy"]["auto_select_winner"] = False
     with pytest.raises(ValueError, match="auto_select_winner"):
         MODULE.validate_config(changed)
 
