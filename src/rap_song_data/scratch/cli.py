@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 
+from .acquisition import acquire_gutenberg, add_gutenberg_arguments
 from .corpus import add_build_arguments, build_corpus
 from .compliance import add_compliance_arguments, analyze_compliance
 from .comparison import (
@@ -57,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
         "plan-corpus", help="Plan source partitions and token requirements for larger scratch models."
     )
     add_source_planning_arguments(source_plan_parser)
+
+    gutenberg_parser = subparsers.add_parser(
+        "acquire-gutenberg", help="Run a bounded Project Gutenberg acquisition pilot."
+    )
+    add_gutenberg_arguments(gutenberg_parser)
 
     inspect_parser = subparsers.add_parser(
         "inspect-corpus", help="Generate a composition and governance report for a scratch corpus."
@@ -154,6 +160,8 @@ def main() -> None:
         result = build_profile(args) if args.profile else build_corpus(args)
     elif args.command == "plan-corpus":
         result = plan_corpus(args)
+    elif args.command == "acquire-gutenberg":
+        result = acquire_gutenberg(args)
     elif args.command == "inspect-corpus":
         result = inspect_corpus(args)
     elif args.command == "ingest-source":
