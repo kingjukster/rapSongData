@@ -29,6 +29,7 @@ from .source_governance import (
     add_audit_arguments,
     add_ingest_arguments,
     add_inspect_arguments,
+    add_materialize_profile_arguments,
     add_migrate_arguments,
     add_profile_arguments,
     add_revoke_arguments,
@@ -39,6 +40,7 @@ from .source_governance import (
     build_profile,
     ingest_source,
     inspect_corpus,
+    materialize_profile,
     migrate_source,
     revoke_source,
     revocation_impact,
@@ -113,6 +115,11 @@ def build_parser() -> argparse.ArgumentParser:
         "revocation-impact", help="Report profile, shard, tokenizer, and lineage impact for a source."
     )
     add_revocation_impact_arguments(impact_parser)
+
+    materialize_parser = subparsers.add_parser(
+        "materialize-profile", help="Write trainable JSONL splits from admitted profile sources."
+    )
+    add_materialize_profile_arguments(materialize_parser)
 
     tokenizer_parser = subparsers.add_parser("train-tokenizer", help="Train BPE and create fixed token shards.")
     add_tokenizer_arguments(tokenizer_parser)
@@ -190,6 +197,8 @@ def main() -> None:
         result = verify_profile(args)
     elif args.command == "revocation-impact":
         result = revocation_impact(args)
+    elif args.command == "materialize-profile":
+        result = materialize_profile(args)
     elif args.command == "train-tokenizer":
         result = train_and_tokenize(args)
     elif args.command == "pretrain":

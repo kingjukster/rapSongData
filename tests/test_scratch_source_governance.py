@@ -14,6 +14,7 @@ from rap_song_data.scratch.source_governance import (
     build_profile,
     ingest_source,
     inspect_corpus,
+    materialize_profile,
     migrate_source,
     revoke_source,
     revocation_impact,
@@ -271,6 +272,82 @@ class ScratchSourceGovernanceTests(unittest.TestCase):
             )
             included = {source["source_id"] for source in result["included_sources"]}
             self.assertIn("project_gutenberg_songbooks", included)
+
+    def test_materialize_profile_writes_only_approved_records(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_dir = self._fixture_corpus(root)
+            approved = root / "approved_records.jsonl"
+            write_jsonl(
+                approved,
+                [
+                    {
+                        "record_id": "pg-one",
+                        "source_id": "project_gutenberg_songbooks",
+                        "source_item_id": "1",
+                        "title": "A Book of Songs",
+                        "issued": "1890",
+                        "text": "line one\nline two\nline three\nline four",
+                        "rights_tier": "release_candidate",
+                        "license_id": "project_gutenberg_us_unrestricted_notice",
+                        "license_evidence": "https://www.gutenberg.org/policy/license.html",
+                        "removal_key": "project_gutenberg_songbooks:1",
+                    }
+                ],
+            )
+            evidence = root / "review_manifest.json"
+            write_json(
+                evidence,
+                {
+                    "admission_allowed": True,
+                    "admission_scope": "approved_records_only",
+                    "profile_eligibility": ["scratch-core-open-v1"],
+                    "counts": {"quarantined_records": 2, "approved_records": 1},
+                    "outputs": {
+                        "approved_records": {
+                            "path": str(approved),
+                            "bytes": approved.stat().st_size,
+                            "sha256": "fixture",
+                        }
+                    },
+                },
+            )
+            common = {
+                "registry": self.registry,
+                "corpus_dir": corpus_dir,
+                "output_dir": root / "sources",
+                "source": "project_gutenberg_songbooks",
+            }
+            ingest_source(argparse.Namespace(**common, snapshot_dir=root / "snapshot"))
+            audit_source(argparse.Namespace(**common, allow_conditional=True))
+            admit_source(argparse.Namespace(**common, rights_evidence=str(evidence), force=False))
+            build_profile(
+                argparse.Namespace(
+                    profile="scratch-core-open-v1",
+                    registry=self.registry,
+                    output_dir=corpus_dir,
+                    catalog_dir=root / "catalog",
+                    sources_dir=root / "sources",
+                )
+            )
+            result = materialize_profile(
+                argparse.Namespace(
+                    profile="scratch-core-open-v1",
+                    catalog_dir=root / "catalog",
+                    sources_dir=root / "sources",
+                    output_dir=root / "materialized",
+                    seed=20260713,
+                    min_retained=1,
+                    limit=None,
+                    force=False,
+                )
+            )
+            self.assertEqual(result["counts"]["retained"], 1)
+            self.assertEqual(result["records_by_source"], {"project_gutenberg_songbooks": 1})
+            rows = [json.loads(line) for line in (root / "materialized" / "all.jsonl").read_text().splitlines()]
+            self.assertEqual(rows[0]["source_item_id"], "1")
+            self.assertIn("<|title|>A Book of Songs", rows[0]["base_text"])
+            self.assertTrue((root / "materialized" / "corpus_manifest.json").exists())
 
     def test_private_source_cannot_enter_open_core_profile(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -8,8 +8,18 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Iterable
 
-from .common import command_record, hash_text, iter_jsonl, path_manifest, read_json, utc_now, write_json
-from .corpus import normalized_lyrics_key
+from .common import (
+    PRIVATE_RESEARCH_POLICY,
+    command_record,
+    hash_file,
+    hash_text,
+    iter_jsonl,
+    path_manifest,
+    read_json,
+    utc_now,
+    write_json,
+)
+from .corpus import base_document, content_flags, normalized_lyrics_key, sft_document, split_for_artist
 from .source_planning import validate_registry
 
 
@@ -805,6 +815,192 @@ def verify_profile(args: argparse.Namespace) -> dict[str, Any]:
     return report
 
 
+def _resolve_manifest_path(value: str | None) -> Path | None:
+    if not value:
+        return None
+    return Path(value)
+
+
+def _profile_record_split(row: dict[str, Any], *, seed: int) -> str:
+    artist = str(row.get("artist_clean") or "").strip()
+    if artist:
+        return split_for_artist(artist, seed=seed)
+    key = ":".join(
+        str(row.get(field) or "")
+        for field in ("source_id", "source_item_id", "record_id", "title")
+    )
+    bucket = int(hash_text(f"{seed}:{key}", digest_size=8), 16) % 100
+    if bucket == 0:
+        return "validation"
+    if bucket == 1:
+        return "test"
+    return "train"
+
+
+def _training_row_from_source(row: dict[str, Any], *, profile: str, seed: int) -> tuple[dict[str, Any] | None, str | None]:
+    lyrics = str(row.get("lyrics") or row.get("text") or "").strip()
+    title = str(row.get("title") or "").strip()
+    if not lyrics:
+        return None, "missing_text"
+    if not title:
+        return None, "missing_title"
+    flags = list(row.get("content_flags") or content_flags(lyrics))
+    split = str(row.get("split") or _profile_record_split(row, seed=seed))
+    materialized = {
+        **row,
+        "schema_version": 2,
+        "profile": profile,
+        "split": split,
+        "title": title,
+        "year": row.get("year", row.get("issued")),
+        "lyrics": lyrics,
+        "content_flags": flags,
+        "line_count": int(row.get("line_count") or len([line for line in lyrics.splitlines() if line.strip()])),
+        "source_id": row.get("source_id"),
+        "source_item_id": row.get("source_item_id"),
+        "record_id": row.get("record_id") or hash_text(
+            f"{row.get('source_id')}:{row.get('source_item_id')}:{title}:{lyrics[:128]}",
+            digest_size=16,
+        ),
+    }
+    materialized["base_text"] = str(row.get("base_text") or base_document(title, materialized["year"], lyrics))
+    materialized["sft_text"] = str(row.get("sft_text") or sft_document(title, materialized["year"], lyrics, flags))
+    if not materialized.get("removal_key"):
+        materialized["removal_key"] = f"{materialized.get('source_id')}:{materialized['record_id']}"
+    return materialized, None
+
+
+def _admitted_record_path(source_dir: Path, admission: dict[str, Any]) -> Path:
+    approved = admission.get("approved_records") or {}
+    approved_path = _resolve_manifest_path(approved.get("path"))
+    if approved_path is not None and approved_path.exists():
+        return approved_path
+    corpus_manifest = admission.get("corpus_manifest")
+    corpus_manifest_path = _resolve_manifest_path((corpus_manifest or {}).get("path"))
+    if corpus_manifest_path is not None and corpus_manifest_path.exists():
+        corpus = read_json(corpus_manifest_path)
+        all_path = _resolve_manifest_path(corpus.get("outputs", {}).get("all", {}).get("path"))
+        if all_path is not None and all_path.exists():
+            return all_path
+    raise ValueError(f"Cannot find admitted training records for {source_dir.name}.")
+
+
+def _write_profile_row(handles: dict[str, Any], row: dict[str, Any]) -> None:
+    from .corpus import _write_row
+
+    _write_row(handles["all"], row)
+    _write_row(handles[row["split"]], row)
+
+
+def materialize_profile(args: argparse.Namespace) -> dict[str, Any]:
+    from .corpus import _finalize_outputs, _open_outputs, _write_row
+
+    started = time.monotonic()
+    started_at = utc_now()
+    catalog_dir = Path(args.catalog_dir)
+    profile_path = catalog_dir / "profiles" / args.profile / "profile_manifest.json"
+    if not profile_path.exists():
+        raise ValueError(f"Missing profile manifest: {profile_path}")
+    profile_manifest = read_json(profile_path)
+    sources_dir = Path(args.sources_dir)
+    output_dir = Path(args.output_dir) if args.output_dir else Path("data/scratch/profiles") / args.profile
+    output_dir.mkdir(parents=True, exist_ok=True)
+    if (output_dir / "corpus_manifest.json").exists() and not args.force:
+        existing = read_json(output_dir / "corpus_manifest.json")
+        if existing.get("profile_manifest_sha256") == hash_file(profile_path) and existing.get("status") == "complete":
+            return existing
+
+    for partial in output_dir.glob("*.jsonl.partial"):
+        partial.unlink()
+    handles = _open_outputs(output_dir, {})
+    counters: Counter[str] = Counter()
+    by_source: Counter[str] = Counter()
+    seen_keys: dict[str, str] = {}
+    try:
+        for source in profile_manifest.get("included_sources", []):
+            source_id = source["source_id"]
+            source_dir = sources_dir / source_id
+            if _source_is_revoked(source_dir):
+                raise ValueError(f"{source_id} is revoked and cannot be materialized.")
+            admission_path = source_dir / "admission_manifest.json"
+            if not admission_path.exists():
+                raise ValueError(f"{source_id} is included in {args.profile} but lacks admission_manifest.json.")
+            admission = read_json(admission_path)
+            records_path = _admitted_record_path(source_dir, admission)
+            for row in iter_jsonl(records_path):
+                if args.limit is not None and counters["input_records"] >= args.limit:
+                    break
+                counters["input_records"] += 1
+                materialized, reason = _training_row_from_source(row, profile=args.profile, seed=args.seed)
+                if materialized is None:
+                    counters[f"rejected_{reason}"] += 1
+                    _write_row(
+                        handles["rejected"],
+                        {
+                            "source_id": source_id,
+                            "record_id": row.get("record_id"),
+                            "source_item_id": row.get("source_item_id"),
+                            "reason": reason,
+                        },
+                    )
+                    continue
+                key = normalized_lyrics_key(materialized["lyrics"])
+                existing = seen_keys.get(key)
+                if existing:
+                    counters["duplicate_exact"] += 1
+                    _write_row(
+                        handles["duplicates"],
+                        {
+                            "record_id": materialized["record_id"],
+                            "representative_record_id": existing,
+                            "duplicate_type": "exact",
+                            "similarity": 1.0,
+                        },
+                    )
+                    continue
+                seen_keys[key] = materialized["record_id"]
+                _write_profile_row(handles, materialized)
+                counters["retained"] += 1
+                counters[f"split_{materialized['split']}"] += 1
+                by_source[source_id] += 1
+                if materialized.get("content_flags"):
+                    counters["explicit_flagged"] += 1
+            if args.limit is not None and counters["input_records"] >= args.limit:
+                break
+    finally:
+        for handle in handles.values():
+            handle.close()
+
+    paths = _finalize_outputs(output_dir)
+    manifest = {
+        **PRIVATE_RESEARCH_POLICY,
+        "schema_version": 1,
+        "status": "complete",
+        "started_at": started_at,
+        "ended_at": utc_now(),
+        "wall_seconds": round(time.monotonic() - started, 3),
+        "command": command_record(),
+        "operation": "materialize-profile",
+        "profile": args.profile,
+        "profile_manifest": path_manifest(profile_path),
+        "profile_manifest_sha256": hash_file(profile_path),
+        "profile_description": profile_manifest.get("description"),
+        "included_sources": profile_manifest.get("included_sources", []),
+        "settings": {"seed": args.seed, "limit": args.limit},
+        "counts": dict(counters),
+        "records_by_source": dict(sorted(by_source.items())),
+        "outputs": {name: path_manifest(path) for name, path in paths.items()},
+        "acceptance": {
+            "minimum_retained_songs": args.min_retained,
+            "retained_songs_passed": counters["retained"] >= args.min_retained,
+            "token_gate_pending": True,
+        },
+        "note": "Materialized rows are trainable local research artifacts derived only from admitted profile sources.",
+    }
+    write_json(output_dir / "corpus_manifest.json", manifest)
+    return manifest
+
+
 def revocation_impact(args: argparse.Namespace) -> dict[str, Any]:
     started = time.monotonic()
     catalog_dir = Path(args.catalog_dir)
@@ -994,6 +1190,17 @@ def add_verify_profile_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--profile", required=True, choices=sorted(PROFILE_RULES))
     parser.add_argument("--catalog-dir", type=Path, default=Path("data/scratch/catalog/v2"))
     parser.add_argument("--sources-dir", type=Path, default=Path("data/scratch/catalog/v2/sources"))
+
+
+def add_materialize_profile_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--profile", required=True, choices=sorted(PROFILE_RULES))
+    parser.add_argument("--catalog-dir", type=Path, default=Path("data/scratch/catalog/v2"))
+    parser.add_argument("--sources-dir", type=Path, default=Path("data/scratch/catalog/v2/sources"))
+    parser.add_argument("--output-dir", type=Path)
+    parser.add_argument("--seed", type=int, default=20260713)
+    parser.add_argument("--min-retained", type=int, default=1)
+    parser.add_argument("--limit", type=int)
+    parser.add_argument("--force", action="store_true")
 
 
 def add_revocation_impact_arguments(parser: argparse.ArgumentParser) -> None:
