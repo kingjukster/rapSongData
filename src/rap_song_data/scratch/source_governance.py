@@ -870,18 +870,21 @@ def _training_row_from_source(row: dict[str, Any], *, profile: str, seed: int) -
     return materialized, None
 
 
-def _admitted_record_path(source_dir: Path, admission: dict[str, Any]) -> Path:
+def _admitted_record_paths(source_dir: Path, admission: dict[str, Any]) -> list[Path]:
+    approved_review_paths = sorted(source_dir.glob("reviews/*/approved_records.jsonl"))
+    if approved_review_paths:
+        return approved_review_paths
     approved = admission.get("approved_records") or {}
     approved_path = _resolve_manifest_path(approved.get("path"))
     if approved_path is not None and approved_path.exists():
-        return approved_path
+        return [approved_path]
     corpus_manifest = admission.get("corpus_manifest")
     corpus_manifest_path = _resolve_manifest_path((corpus_manifest or {}).get("path"))
     if corpus_manifest_path is not None and corpus_manifest_path.exists():
         corpus = read_json(corpus_manifest_path)
         all_path = _resolve_manifest_path(corpus.get("outputs", {}).get("all", {}).get("path"))
         if all_path is not None and all_path.exists():
-            return all_path
+            return [all_path]
     raise ValueError(f"Cannot find admitted training records for {source_dir.name}.")
 
 
@@ -926,45 +929,48 @@ def materialize_profile(args: argparse.Namespace) -> dict[str, Any]:
             if not admission_path.exists():
                 raise ValueError(f"{source_id} is included in {args.profile} but lacks admission_manifest.json.")
             admission = read_json(admission_path)
-            records_path = _admitted_record_path(source_dir, admission)
-            for row in iter_jsonl(records_path):
+            for records_path in _admitted_record_paths(source_dir, admission):
+                counters["approved_record_files"] += 1
+                for row in iter_jsonl(records_path):
+                    if args.limit is not None and counters["input_records"] >= args.limit:
+                        break
+                    counters["input_records"] += 1
+                    materialized, reason = _training_row_from_source(row, profile=args.profile, seed=args.seed)
+                    if materialized is None:
+                        counters[f"rejected_{reason}"] += 1
+                        _write_row(
+                            handles["rejected"],
+                            {
+                                "source_id": source_id,
+                                "record_id": row.get("record_id"),
+                                "source_item_id": row.get("source_item_id"),
+                                "reason": reason,
+                            },
+                        )
+                        continue
+                    key = normalized_lyrics_key(materialized["lyrics"])
+                    existing = seen_keys.get(key)
+                    if existing:
+                        counters["duplicate_exact"] += 1
+                        _write_row(
+                            handles["duplicates"],
+                            {
+                                "record_id": materialized["record_id"],
+                                "representative_record_id": existing,
+                                "duplicate_type": "exact",
+                                "similarity": 1.0,
+                            },
+                        )
+                        continue
+                    seen_keys[key] = materialized["record_id"]
+                    _write_profile_row(handles, materialized)
+                    counters["retained"] += 1
+                    counters[f"split_{materialized['split']}"] += 1
+                    by_source[source_id] += 1
+                    if materialized.get("content_flags"):
+                        counters["explicit_flagged"] += 1
                 if args.limit is not None and counters["input_records"] >= args.limit:
                     break
-                counters["input_records"] += 1
-                materialized, reason = _training_row_from_source(row, profile=args.profile, seed=args.seed)
-                if materialized is None:
-                    counters[f"rejected_{reason}"] += 1
-                    _write_row(
-                        handles["rejected"],
-                        {
-                            "source_id": source_id,
-                            "record_id": row.get("record_id"),
-                            "source_item_id": row.get("source_item_id"),
-                            "reason": reason,
-                        },
-                    )
-                    continue
-                key = normalized_lyrics_key(materialized["lyrics"])
-                existing = seen_keys.get(key)
-                if existing:
-                    counters["duplicate_exact"] += 1
-                    _write_row(
-                        handles["duplicates"],
-                        {
-                            "record_id": materialized["record_id"],
-                            "representative_record_id": existing,
-                            "duplicate_type": "exact",
-                            "similarity": 1.0,
-                        },
-                    )
-                    continue
-                seen_keys[key] = materialized["record_id"]
-                _write_profile_row(handles, materialized)
-                counters["retained"] += 1
-                counters[f"split_{materialized['split']}"] += 1
-                by_source[source_id] += 1
-                if materialized.get("content_flags"):
-                    counters["explicit_flagged"] += 1
             if args.limit is not None and counters["input_records"] >= args.limit:
                 break
     finally:
