@@ -69,13 +69,35 @@ def candidate_score(row: dict[str, str]) -> int:
     return sum(3 if keyword in str(row.get("Title", "")).lower() else 1 for keyword in KEYWORDS if keyword in haystack)
 
 
-def select_gutenberg_candidates(catalog: Path, *, limit: int, min_score: int = 1) -> list[dict[str, str]]:
+def seen_gutenberg_ids(normalized_root: Path, *, source_id: str = SOURCE_ID) -> set[str]:
+    root = normalized_root / source_id
+    if not root.exists():
+        return set()
+    seen: set[str] = set()
+    for records_path in root.glob("*/records.jsonl"):
+        for row in iter_jsonl(records_path):
+            source_item_id = str(row.get("source_item_id") or "").strip()
+            if source_item_id:
+                seen.add(source_item_id)
+    return seen
+
+
+def select_gutenberg_candidates(
+    catalog: Path,
+    *,
+    limit: int,
+    min_score: int = 1,
+    exclude_ids: set[str] | None = None,
+) -> list[dict[str, str]]:
+    excluded = exclude_ids or set()
     candidates: list[tuple[int, int, dict[str, str]]] = []
     for row in iter_catalog_rows(catalog):
         if row.get("Type") != "Text" or row.get("Language") != "en":
             continue
         text_id = str(row.get("Text#") or "").strip()
         if not text_id.isdigit():
+            continue
+        if text_id in excluded:
             continue
         score = candidate_score(row)
         if score >= min_score:
@@ -226,7 +248,13 @@ def acquire_gutenberg(args: argparse.Namespace) -> dict[str, Any]:
     raw_text_dir = raw_dir / "texts"
     normalized_dir = normalized_root / SOURCE_ID / snapshot_id
     catalog = ensure_catalog(raw_dir, force=args.force_catalog)
-    candidates = select_gutenberg_candidates(catalog, limit=args.candidate_limit, min_score=args.min_score)
+    exclude_ids = seen_gutenberg_ids(normalized_root) if args.skip_seen else set()
+    candidates = select_gutenberg_candidates(
+        catalog,
+        limit=args.candidate_limit,
+        min_score=args.min_score,
+        exclude_ids=exclude_ids,
+    )
     records: list[dict[str, Any]] = []
     rejected: list[dict[str, Any]] = []
     retrieved_at = utc_now()
@@ -277,6 +305,8 @@ def acquire_gutenberg(args: argparse.Namespace) -> dict[str, Any]:
             "min_score": args.min_score,
             "min_words": args.min_words,
             "raw_target_tokens": args.raw_target_tokens,
+            "skip_seen": args.skip_seen,
+            "excluded_seen_records": len(exclude_ids),
         },
         "rights": {
             "training_eligibility": "conditional",
@@ -407,6 +437,7 @@ def add_gutenberg_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--min-words", type=int, default=200)
     parser.add_argument("--delay-seconds", type=float, default=2.0)
     parser.add_argument("--force-catalog", action="store_true")
+    parser.add_argument("--skip-seen", action="store_true")
 
 
 def add_gutenberg_review_arguments(parser: argparse.ArgumentParser) -> None:

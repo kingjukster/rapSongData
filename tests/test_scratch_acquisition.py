@@ -10,6 +10,7 @@ from rap_song_data.scratch.acquisition import (
     normalized_record,
     review_gutenberg_record,
     select_gutenberg_candidates,
+    seen_gutenberg_ids,
     strip_gutenberg_wrapper,
 )
 
@@ -64,6 +65,50 @@ class ScratchAcquisitionTests(unittest.TestCase):
                 )
             selected = select_gutenberg_candidates(catalog, limit=10)
             self.assertEqual([row["Text#"] for row in selected], ["1"])
+
+    def test_select_gutenberg_candidates_can_skip_seen_ids(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            catalog = Path(temporary) / "pg_catalog.csv.gz"
+            with gzip.open(catalog, "wt", encoding="utf-8", newline="") as handle:
+                writer = csv.DictWriter(
+                    handle,
+                    fieldnames=[
+                        "Text#",
+                        "Type",
+                        "Issued",
+                        "Title",
+                        "Language",
+                        "Authors",
+                        "Subjects",
+                        "LoCC",
+                        "Bookshelves",
+                    ],
+                )
+                writer.writeheader()
+                for text_id in ("1", "2"):
+                    writer.writerow(
+                        {
+                            "Text#": text_id,
+                            "Type": "Text",
+                            "Title": f"Book {text_id} of Ballads and Songs",
+                            "Language": "en",
+                            "Subjects": "Ballads; Songs",
+                            "Bookshelves": "Poetry",
+                        }
+                    )
+            selected = select_gutenberg_candidates(catalog, limit=10, exclude_ids={"1"})
+            self.assertEqual([row["Text#"] for row in selected], ["2"])
+
+    def test_seen_gutenberg_ids_reads_existing_snapshots(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            snapshot = root / "project_gutenberg_songbooks" / "snapshot-a"
+            snapshot.mkdir(parents=True)
+            (snapshot / "records.jsonl").write_text(
+                '{"source_item_id":"123"}\n{"source_item_id":"456"}\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(seen_gutenberg_ids(root), {"123", "456"})
 
     def test_strip_gutenberg_wrapper_removes_header_and_footer(self):
         text = (
