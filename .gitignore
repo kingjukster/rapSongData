@@ -39,6 +39,9 @@ venv/
 /data/sft*/
 /data/sweeps/
 /data/training/
+/data/corpus_lake/
+/data/scratch/
+/data/scratch/catalog/
 
 # Generated reports, experiment runs, and historical evidence snapshots
 /reports/

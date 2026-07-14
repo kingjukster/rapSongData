@@ -1,0 +1,26 @@
+[
+  {
+    "title": "Cold Signal",
+    "section": "verse",
+    "target_lines": 4,
+    "content_policy": "clean"
+  },
+  {
+    "title": "Neon Pressure",
+    "section": "hook",
+    "target_lines": 8,
+    "content_policy": "clean"
+  },
+  {
+    "title": "After the Sirens",
+    "section": "bridge",
+    "target_lines": 16,
+    "content_policy": "explicit"
+  },
+  {
+    "title": "Last Train North",
+    "section": "verse",
+    "target_lines": 32,
+    "content_policy": "clean"
+  }
+]
