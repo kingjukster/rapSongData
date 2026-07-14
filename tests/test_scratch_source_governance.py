@@ -183,6 +183,95 @@ class ScratchSourceGovernanceTests(unittest.TestCase):
                     )
                 )
 
+    def test_conditional_source_with_review_evidence_enters_open_core(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_dir = self._fixture_corpus(root)
+            evidence = root / "review_manifest.json"
+            write_json(
+                evidence,
+                {
+                    "admission_allowed": True,
+                    "profile_eligibility": [
+                        "scratch-core-open-v1",
+                        "scratch-research-nc-v1",
+                        "scratch-private-extended-v1",
+                    ],
+                    "counts": {"quarantined_records": 0, "approved_records": 1},
+                },
+            )
+            common = {
+                "registry": self.registry,
+                "corpus_dir": corpus_dir,
+                "output_dir": root / "sources",
+                "source": "project_gutenberg_songbooks",
+            }
+            ingest_source(argparse.Namespace(**common, snapshot_dir=root / "snapshot"))
+            audit_source(argparse.Namespace(**common, allow_conditional=True))
+            admit_source(
+                argparse.Namespace(
+                    **common,
+                    rights_evidence=str(evidence),
+                    force=False,
+                )
+            )
+            result = build_profile(
+                argparse.Namespace(
+                    profile="scratch-core-open-v1",
+                    registry=self.registry,
+                    output_dir=corpus_dir,
+                    catalog_dir=root / "catalog",
+                    sources_dir=root / "sources",
+                )
+            )
+            included = {source["source_id"] for source in result["included_sources"]}
+            self.assertIn("project_gutenberg_songbooks", included)
+
+    def test_conditional_source_with_partial_review_evidence_enters_open_core(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            corpus_dir = self._fixture_corpus(root)
+            approved = root / "approved_records.jsonl"
+            approved.write_text("", encoding="utf-8")
+            evidence = root / "review_manifest.json"
+            write_json(
+                evidence,
+                {
+                    "admission_allowed": True,
+                    "admission_scope": "approved_records_only",
+                    "profile_eligibility": ["scratch-core-open-v1"],
+                    "counts": {"quarantined_records": 2, "approved_records": 1},
+                    "outputs": {"approved_records": {"path": str(approved), "bytes": 0, "sha256": "empty"}},
+                },
+            )
+            common = {
+                "registry": self.registry,
+                "corpus_dir": corpus_dir,
+                "output_dir": root / "sources",
+                "source": "project_gutenberg_songbooks",
+            }
+            ingest_source(argparse.Namespace(**common, snapshot_dir=root / "snapshot"))
+            audit_source(argparse.Namespace(**common, allow_conditional=True))
+            admission = admit_source(
+                argparse.Namespace(
+                    **common,
+                    rights_evidence=str(evidence),
+                    force=False,
+                )
+            )
+            self.assertEqual(admission["admission_scope"], "approved_records_only")
+            result = build_profile(
+                argparse.Namespace(
+                    profile="scratch-core-open-v1",
+                    registry=self.registry,
+                    output_dir=corpus_dir,
+                    catalog_dir=root / "catalog",
+                    sources_dir=root / "sources",
+                )
+            )
+            included = {source["source_id"] for source in result["included_sources"]}
+            self.assertIn("project_gutenberg_songbooks", included)
+
     def test_private_source_cannot_enter_open_core_profile(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

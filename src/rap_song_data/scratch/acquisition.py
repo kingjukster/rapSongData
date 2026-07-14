@@ -10,7 +10,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any, Iterable
 
-from .common import command_record, hash_file, hash_text, path_manifest, utc_now, write_json, write_jsonl
+from .common import command_record, hash_file, hash_text, iter_jsonl, path_manifest, utc_now, write_json, write_jsonl
 
 
 GUTENBERG_CATALOG_URL = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.csv.gz"
@@ -123,6 +123,58 @@ def strip_gutenberg_wrapper(text: str) -> str:
     while lines and not lines[-1].strip():
         lines.pop()
     return "\n".join(lines).strip()
+
+
+def gutenberg_header(text: str) -> str:
+    start = START_RE.search(text)
+    header = text[: start.start()] if start else text[:5000]
+    return header.replace("\r\n", "\n").replace("\r", "\n").strip()
+
+
+def review_gutenberg_record(record: dict[str, Any], raw_text: str) -> dict[str, Any]:
+    header = gutenberg_header(raw_text)
+    header_lower = header.lower()
+    issues: list[str] = []
+    if (
+        "this ebook is for the use of anyone anywhere" not in header_lower
+        or "almost no restrictions whatsoever" not in header_lower
+    ):
+        issues.append("missing_standard_gutenberg_us_unrestricted_notice")
+    restricted_markers = [
+        "copyrighted ebook",
+        "permission of the copyright holder",
+        "restricted by copyright law",
+        "copyright (c)",
+    ]
+    for marker in restricted_markers:
+        if marker in header_lower:
+            issues.append(f"restricted_marker:{marker}")
+    if record.get("language") != "en":
+        issues.append("not_english")
+    if int(record.get("word_count") or 0) < 200:
+        issues.append("too_short")
+    decision = "approved_release_candidate" if not issues else "quarantine"
+    return {
+        "source_id": SOURCE_ID,
+        "source_item_id": record["source_item_id"],
+        "record_id": record["record_id"],
+        "title": record.get("title"),
+        "authors": record.get("authors"),
+        "source_url": record.get("source_url"),
+        "source_url_hash": record.get("source_url_hash"),
+        "text_sha256": record.get("text_sha256"),
+        "normalized_text_sha256": record.get("normalized_text_sha256"),
+        "word_count": record.get("word_count"),
+        "approx_tokens": record.get("approx_tokens"),
+        "rights_decision": decision,
+        "rights_tier": "release_candidate" if decision == "approved_release_candidate" else "quarantine",
+        "rights_status": "reviewed_us_unrestricted_header" if decision == "approved_release_candidate" else "needs_manual_review",
+        "license_id": "project_gutenberg_us_unrestricted_notice",
+        "license_evidence": "https://www.gutenberg.org/policy/license.html",
+        "license_evidence_scope": "item_header",
+        "quality_decision": "accepted" if decision == "approved_release_candidate" else "quarantine",
+        "issues": issues,
+    }
 
 
 def approx_tokens(text: str) -> int:
@@ -249,6 +301,100 @@ def acquire_gutenberg(args: argparse.Namespace) -> dict[str, Any]:
     return manifest
 
 
+def _latest_snapshot(root: Path) -> Path:
+    candidates = [path for path in root.iterdir() if path.is_dir()]
+    if not candidates:
+        raise ValueError(f"No snapshots found under {root}")
+    return sorted(candidates)[-1]
+
+
+def review_gutenberg(args: argparse.Namespace) -> dict[str, Any]:
+    started = time.monotonic()
+    normalized_root = Path(args.normalized_dir) / SOURCE_ID
+    raw_root = Path(args.raw_dir) / SOURCE_ID
+    snapshot_dir = normalized_root / args.snapshot_id if args.snapshot_id else _latest_snapshot(normalized_root)
+    snapshot_id = snapshot_dir.name
+    raw_snapshot_dir = raw_root / snapshot_id
+    records_path = snapshot_dir / "records.jsonl"
+    if not records_path.exists():
+        raise ValueError(f"Missing Gutenberg records file: {records_path}")
+    review_dir = Path(args.output_dir) / SOURCE_ID / "reviews" / snapshot_id
+    reviews: list[dict[str, Any]] = []
+    approved_tokens = 0
+    quarantined_tokens = 0
+    for record in iter_jsonl(records_path):
+        raw_path = raw_snapshot_dir / "texts" / f"{record['source_item_id']}.txt"
+        if not raw_path.exists():
+            review = {
+                "source_id": SOURCE_ID,
+                "source_item_id": record["source_item_id"],
+                "record_id": record["record_id"],
+                "rights_decision": "quarantine",
+                "rights_status": "missing_raw_text",
+                "quality_decision": "quarantine",
+                "issues": ["missing_raw_text"],
+            }
+        else:
+            review = review_gutenberg_record(
+                record,
+                raw_path.read_text(encoding="utf-8", errors="ignore"),
+            )
+        if review["rights_decision"] == "approved_release_candidate":
+            approved_tokens += int(review.get("approx_tokens") or 0)
+        else:
+            quarantined_tokens += int(review.get("approx_tokens") or 0)
+        reviews.append(review)
+
+    review_path = review_dir / "item_reviews.jsonl"
+    approved_records_path = review_dir / "approved_records.jsonl"
+    write_jsonl(review_path, reviews)
+    approved = [row for row in reviews if row["rights_decision"] == "approved_release_candidate"]
+    quarantined = [row for row in reviews if row["rights_decision"] != "approved_release_candidate"]
+    approved_ids = {row["source_item_id"] for row in approved}
+    approved_records = [row for row in iter_jsonl(records_path) if row["source_item_id"] in approved_ids]
+    write_jsonl(approved_records_path, approved_records)
+    admission_allowed = (
+        len(quarantined) == 0 and len(approved) > 0
+    ) or (args.allow_partial_admission and len(approved) > 0)
+    manifest = {
+        "schema_version": 1,
+        "generated_at": utc_now(),
+        "command": command_record(),
+        "operation": "review-gutenberg",
+        "source_id": SOURCE_ID,
+        "snapshot_id": snapshot_id,
+        "review_policy": {
+            "jurisdiction": "US",
+            "basis": "Project Gutenberg item header contains the standard unrestricted US notice and no restricted marker before the START marker.",
+            "license_policy_url": "https://www.gutenberg.org/policy/license.html",
+            "permission_policy_url": "https://www.gutenberg.org/policy/permission.html",
+            "manual_review_required_for_quarantine": True,
+        },
+        "profile_eligibility": ["scratch-core-open-v1", "scratch-research-nc-v1", "scratch-private-extended-v1"],
+        "admission_allowed": admission_allowed,
+        "admission_scope": "all_reviewed_records" if len(quarantined) == 0 else "approved_records_only",
+        "counts": {
+            "reviewed_records": len(reviews),
+            "approved_records": len(approved),
+            "quarantined_records": len(quarantined),
+            "approved_approx_tokens": approved_tokens,
+            "quarantined_approx_tokens": quarantined_tokens,
+        },
+        "inputs": {
+            "records": path_manifest(records_path),
+            "raw_snapshot_dir": str(raw_snapshot_dir),
+        },
+        "outputs": {
+            "item_reviews": path_manifest(review_path),
+            "approved_records": path_manifest(approved_records_path),
+        },
+        "wall_seconds": round(time.monotonic() - started, 3),
+    }
+    write_json(review_dir / "review_manifest.json", manifest)
+    write_json(Path(args.output_dir) / SOURCE_ID / "review_manifest.json", manifest)
+    return manifest
+
+
 def add_gutenberg_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--raw-dir", type=Path, default=Path("data/corpus_lake/raw"))
     parser.add_argument("--normalized-dir", type=Path, default=Path("data/corpus_lake/normalized"))
@@ -261,3 +407,11 @@ def add_gutenberg_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--min-words", type=int, default=200)
     parser.add_argument("--delay-seconds", type=float, default=2.0)
     parser.add_argument("--force-catalog", action="store_true")
+
+
+def add_gutenberg_review_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--raw-dir", type=Path, default=Path("data/corpus_lake/raw"))
+    parser.add_argument("--normalized-dir", type=Path, default=Path("data/corpus_lake/normalized"))
+    parser.add_argument("--output-dir", type=Path, default=Path("data/scratch/catalog/v2/sources"))
+    parser.add_argument("--snapshot-id")
+    parser.add_argument("--allow-partial-admission", action="store_true")

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from rap_song_data.scratch.acquisition import (
     normalized_record,
+    review_gutenberg_record,
     select_gutenberg_candidates,
     strip_gutenberg_wrapper,
 )
@@ -101,6 +102,61 @@ class ScratchAcquisitionTests(unittest.TestCase):
             self.assertEqual(record["license_evidence_scope"], "item_required")
             self.assertEqual(record["split_group_status"], "pending_deduplication")
             self.assertGreater(record["approx_tokens"], 200)
+
+    def test_review_gutenberg_record_approves_standard_header(self):
+        record = {
+            "source_item_id": "1",
+            "record_id": "abc",
+            "title": "A Book of Songs",
+            "authors": "Example",
+            "source_url": "https://example.test/1.txt",
+            "source_url_hash": "hash",
+            "text_sha256": "text",
+            "normalized_text_sha256": "norm",
+            "language": "en",
+            "word_count": 300,
+            "approx_tokens": 390,
+        }
+        raw_text = (
+            "This eBook is for the use of anyone anywhere in the United States "
+            "and most other parts of the world at no cost and with almost no restrictions whatsoever.\n"
+            "*** START OF THE PROJECT GUTENBERG EBOOK TEST ***\nBody"
+        )
+        review = review_gutenberg_record(record, raw_text)
+        self.assertEqual(review["rights_decision"], "approved_release_candidate")
+        self.assertEqual(review["license_evidence_scope"], "item_header")
+
+    def test_review_gutenberg_record_approves_older_standard_header(self):
+        record = {
+            "source_item_id": "1",
+            "record_id": "abc",
+            "language": "en",
+            "word_count": 300,
+            "approx_tokens": 390,
+        }
+        raw_text = (
+            "This eBook is for the use of anyone anywhere at no cost and with\n"
+            "almost no restrictions whatsoever. You may copy it, give it away or re-use it.\n"
+            "*** START OF THIS PROJECT GUTENBERG EBOOK TEST ***\nBody"
+        )
+        review = review_gutenberg_record(record, raw_text)
+        self.assertEqual(review["rights_decision"], "approved_release_candidate")
+
+    def test_review_gutenberg_record_quarantines_restricted_header(self):
+        record = {
+            "source_item_id": "1",
+            "record_id": "abc",
+            "language": "en",
+            "word_count": 300,
+            "approx_tokens": 390,
+        }
+        raw_text = (
+            "This eBook is posted with the permission of the copyright holder.\n"
+            "*** START OF THE PROJECT GUTENBERG EBOOK TEST ***\nBody"
+        )
+        review = review_gutenberg_record(record, raw_text)
+        self.assertEqual(review["rights_decision"], "quarantine")
+        self.assertIn("restricted_marker:permission of the copyright holder", review["issues"])
 
 
 if __name__ == "__main__":

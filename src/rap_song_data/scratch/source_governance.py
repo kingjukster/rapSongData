@@ -158,6 +158,23 @@ def _source_is_revoked(source_dir: Path) -> bool:
     return _generated_at(revocation_path) >= _generated_at(admission_path)
 
 
+def _rights_evidence_payload(value: str | None) -> dict[str, Any] | None:
+    if not value:
+        return None
+    path = Path(value)
+    if path.exists():
+        return read_json(path)
+    return None
+
+
+def _admission_allows_profile(source_dir: Path, profile: str) -> bool:
+    admission_path = source_dir / "admission_manifest.json"
+    if not admission_path.exists():
+        return False
+    admission = read_json(admission_path)
+    return profile in set(admission.get("profile_eligibility") or [])
+
+
 def inspect_corpus(args: argparse.Namespace) -> dict[str, Any]:
     started = time.monotonic()
     corpus_dir = Path(args.corpus_dir)
@@ -462,8 +479,19 @@ def admit_source(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(
             f"{args.source} is {source['training_eligibility']} and cannot be admitted to a training build."
         )
+    rights_payload = _rights_evidence_payload(args.rights_evidence)
     if source["training_eligibility"] == "conditional" and not args.rights_evidence and not args.force:
         raise ValueError(f"{args.source} requires --rights-evidence or --force before admission.")
+    if source["training_eligibility"] == "conditional" and not args.force:
+        if rights_payload is None:
+            raise ValueError(f"{args.source} requires a JSON rights-evidence manifest path.")
+        if not rights_payload.get("admission_allowed"):
+            raise ValueError(f"{args.source} rights-evidence manifest does not allow admission.")
+        if (
+            int(rights_payload.get("counts", {}).get("quarantined_records", 0)) != 0
+            and rights_payload.get("admission_scope") != "approved_records_only"
+        ):
+            raise ValueError(f"{args.source} has quarantined records in rights-evidence manifest.")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest = {
@@ -478,6 +506,18 @@ def admit_source(args: argparse.Namespace) -> dict[str, Any]:
         "audit_report": path_manifest(audit_path) if audit_path.exists() else None,
         "admission_status": "admitted",
         "rights_evidence": str(args.rights_evidence) if args.rights_evidence else source["license_scope"],
+        "rights_evidence_manifest": path_manifest(Path(args.rights_evidence))
+        if args.rights_evidence and Path(args.rights_evidence).exists()
+        else None,
+        "profile_eligibility": rights_payload.get("profile_eligibility", [])
+        if rights_payload
+        else (
+            ["scratch-private-extended-v1"]
+            if source["training_eligibility"] == "private_only"
+            else []
+        ),
+        "admission_scope": rights_payload.get("admission_scope") if rights_payload else "source",
+        "approved_records": rights_payload.get("outputs", {}).get("approved_records") if rights_payload else None,
         "partition": source["partition"],
         "removal_key_field": "removal_key",
         "record_id_namespace": args.source,
@@ -821,7 +861,10 @@ def build_profile(args: argparse.Namespace) -> dict[str, Any]:
         admitted = admission_path.exists()
         revoked = _source_is_revoked(source_dir)
         selected = (
-            source["training_eligibility"] in rule["eligibility"]
+            (
+                source["training_eligibility"] in rule["eligibility"]
+                or _admission_allows_profile(source_dir, profile)
+            )
             and source["partition"] in rule["partitions"]
             and source["training_eligibility"] != "metadata_only"
             and not revoked
@@ -839,7 +882,11 @@ def build_profile(args: argparse.Namespace) -> dict[str, Any]:
                 row["blocked_reason"] = "not_admitted"
                 blocked.append(row)
                 continue
-            if profile == "scratch-core-open-v1" and source["training_eligibility"] != "eligible":
+            if (
+                profile == "scratch-core-open-v1"
+                and source["training_eligibility"] != "eligible"
+                and not _admission_allows_profile(source_dir, profile)
+            ):
                 failures.append(f"{source['source_id']} is not releaseable for {profile}")
             included.append(row)
         else:
