@@ -62,7 +62,13 @@
       "local_row_count": 5913411,
       "local_nonempty_lyrics": 5912074,
       "local_approx_tokens": 2098682382,
-      "next_action": "Normalize in a staged private-only pass, then dedupe against existing private lyric corpora before admission."
+      "pilot_status": "rap250k_normalized_deduped_admitted_private",
+      "pilot_snapshot": "data/corpus_lake/normalized/kaggle_private_lyrics_5m_genius_scrape/20260715_credentialed_download_rap250k_pilot",
+      "pilot_scanned_rows": 1864369,
+      "pilot_approved_records": 250000,
+      "pilot_approved_approx_tokens": 165253960,
+      "pilot_rejected_existing_exact_duplicates": 78858,
+      "next_action": "Scale staged private-only normalization after deciding whether to continue rap-only or broaden to other tags."
     },
     {
       "rank": 3,

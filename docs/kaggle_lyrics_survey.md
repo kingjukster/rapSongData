@@ -25,8 +25,9 @@ The practical reason is simple: Kaggle can show a license for the dataset packag
    - Best bulk-volume target.
    - License observed as Unknown; listing references a scraper.
    - Use only in private partition; download/sample before full ingest because it is large.
-   - Local status: raw Kaggle snapshot downloaded and manifested; not yet normalized/admitted.
+   - Local status: raw Kaggle snapshot downloaded and manifested; first rap-only pilot normalized, exact-deduped, and admitted to `scratch-private-extended-v1` as `kaggle_private_lyrics_5m_genius_scrape`.
    - Local snapshot stats: 5,913,411 rows, 5,912,074 nonempty lyrics, about 2.10B rough tokens.
+   - Pilot stats: scanned 1,864,369 rows to approve 250,000 rap records, rejected 78,858 exact duplicates against the existing scratch corpus, and added about 165.3M rough private-only tokens.
 
 3. `carlosgdcj/genius-song-lyrics-with-language-information`
    - Useful because language labels help filtering.
@@ -45,7 +46,7 @@ The practical reason is simple: Kaggle can show a license for the dataset packag
 Kaggle CLI/auth is configured locally through the repo virtual environment. The first two candidates have local snapshots:
 
 - `d3stron/english-music-lyrics-5-genres-500k`: downloaded, normalized, admitted to the private profile, and verified through the source-governance commands.
-- `nikhilnayak123/5-million-song-lyrics-dataset`: downloaded and raw-manifested; keep pending until a staged normalizer and dedupe pass are run.
+- `nikhilnayak123/5-million-song-lyrics-dataset`: downloaded and raw-manifested; a bounded rap250k pilot is normalized, exact-deduped against `data/scratch/v1/dedupe.sqlite3`, admitted to the private profile, and verified through the source-governance commands.
 
 To re-plan candidate priority, use:
 

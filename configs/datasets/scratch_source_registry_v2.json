@@ -46,6 +46,19 @@
       "notes": "550,000 nonempty lyric rows across five genre labels. Keep isolated from releaseable corpora."
     },
     {
+      "source_id": "kaggle_private_lyrics_5m_genius_scrape",
+      "name": "Kaggle 5 Million Song Lyrics Dataset",
+      "tier": "C",
+      "partition": "private_unknown_rights",
+      "training_eligibility": "private_only",
+      "full_text_available": true,
+      "text_access": "Kaggle credentialed private snapshot",
+      "license_scope": "Kaggle package observed as unknown; underlying lyric rights are unverified, so private/personal use only",
+      "provenance_url": "https://www.kaggle.com/datasets/nikhilnayak123/5-million-song-lyrics-dataset",
+      "status": "pilot_candidate",
+      "notes": "Raw snapshot has 5,913,411 rows and about 2.10B rough character-derived tokens. The rap250k pilot admitted 250,000 exact-deduped private records and about 165.3M rough tokens."
+    },
+    {
       "source_id": "musicbrainz_core",
       "name": "MusicBrainz core and canonical mappings",
       "tier": "A",
