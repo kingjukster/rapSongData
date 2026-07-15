@@ -8,13 +8,17 @@ from pathlib import Path
 
 from rap_song_data.scratch.acquisition import (
     clean_abc_lyric_line,
+    clean_wikisource_wikitext,
     normalized_record,
+    normalized_wikisource_record,
     parse_abc_tune,
     review_gutenberg_record,
     review_open_hymnal_record,
+    review_wikisource_record,
     select_gutenberg_candidates,
     seen_gutenberg_ids,
     strip_gutenberg_wrapper,
+    wikisource_templates,
 )
 
 
@@ -257,6 +261,74 @@ class ScratchAcquisitionTests(unittest.TestCase):
         self.assertEqual(review["rights_decision"], "quarantine")
         self.assertIn("missing_public_domain_item_statement", review["issues"])
         self.assertIn("restricted_or_non_pd_marker:provided it is not altered", review["issues"])
+
+    def test_clean_wikisource_wikitext_prefers_poem_blocks(self):
+        wikitext = (
+            "{{header|title=12th Street Rag}}\n"
+            "[[File:12th Street Rag.pdf|thumb]]\n"
+            "<poem>\n;VERSE 1\nIn a certain city\n[[Jazz|jazz-time]] tune\n</poem>\n"
+            "[[Category:Song lyrics]]\n{{PD/US|1959}}"
+        )
+        cleaned = clean_wikisource_wikitext(wikitext)
+        self.assertIn("VERSE 1", cleaned)
+        self.assertIn("jazz-time tune", cleaned)
+        self.assertNotIn("File:", cleaned)
+        self.assertNotIn("PD/US", cleaned)
+
+    def test_wikisource_templates_extracts_license_template(self):
+        self.assertIn("PD/US", wikisource_templates("{{header}}\n{{PD/US|1959}}"))
+
+    def test_normalized_wikisource_record_and_review_approve_pd_page(self):
+        page = {
+            "pageid": 757504,
+            "title": "12th Street Rag",
+            "fullurl": "https://en.wikisource.org/wiki/12th_Street_Rag",
+            "pagelanguage": "en",
+            "categories": [
+                {"title": "Category:PD-old-60-US"},
+                {"title": "Category:Song lyrics"},
+            ],
+            "revisions": [
+                {
+                    "revid": 123,
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "slots": {
+                        "main": {
+                            "content": (
+                                "{{header|title=12th Street Rag}}\n"
+                                "<poem>\n"
+                                "In a certain city, where the girls are cute and pretty,\n"
+                                "they have a raggy jazzy jazz-time tune.\n"
+                                "First you slide and then you glide,\n"
+                                "then you shimmie for a while.\n"
+                                "</poem>\n"
+                                "{{PD/US|1959}}"
+                            )
+                        }
+                    },
+                }
+            ],
+        }
+        record = normalized_wikisource_record(page, category="Song lyrics", retrieved_at="2026-07-15T00:00:00Z")
+        review = review_wikisource_record(record)
+        self.assertEqual(record["source_id"], "wikisource_lyrics")
+        self.assertEqual(record["revision_id"], 123)
+        self.assertEqual(review["rights_decision"], "approved_release_candidate")
+        self.assertEqual(review["rights_status"], "reviewed_public_domain_wikisource_page")
+
+    def test_review_wikisource_record_quarantines_missing_pd_marker(self):
+        review = review_wikisource_record(
+            {
+                "source_item_id": "Example",
+                "record_id": "abc",
+                "word_count": 50,
+                "approx_tokens": 65,
+                "categories": ["Category:Song lyrics"],
+                "templates": ["header"],
+            }
+        )
+        self.assertEqual(review["rights_decision"], "quarantine")
+        self.assertIn("missing_public_domain_page_marker", review["issues"])
 
 
 if __name__ == "__main__":

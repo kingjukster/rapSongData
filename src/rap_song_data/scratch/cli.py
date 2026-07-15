@@ -6,12 +6,16 @@ import json
 from .acquisition import (
     acquire_gutenberg,
     acquire_open_hymnal,
+    acquire_wikisource,
     add_gutenberg_arguments,
     add_gutenberg_review_arguments,
     add_open_hymnal_arguments,
     add_open_hymnal_review_arguments,
+    add_wikisource_arguments,
+    add_wikisource_review_arguments,
     review_gutenberg,
     review_open_hymnal,
+    review_wikisource,
 )
 from .corpus import add_build_arguments, build_corpus
 from .compliance import add_compliance_arguments, analyze_compliance
@@ -89,6 +93,16 @@ def build_parser() -> argparse.ArgumentParser:
         "review-open-hymnal", help="Review Open Hymnal ABC records for item-level public-domain evidence."
     )
     add_open_hymnal_review_arguments(open_hymnal_review_parser)
+
+    wikisource_parser = subparsers.add_parser(
+        "acquire-wikisource", help="Run a bounded Wikisource lyric/category acquisition pilot."
+    )
+    add_wikisource_arguments(wikisource_parser)
+
+    wikisource_review_parser = subparsers.add_parser(
+        "review-wikisource", help="Review Wikisource records for page-level public-domain evidence."
+    )
+    add_wikisource_review_arguments(wikisource_review_parser)
 
     inspect_parser = subparsers.add_parser(
         "inspect-corpus", help="Generate a composition and governance report for a scratch corpus."
@@ -199,6 +213,10 @@ def main() -> None:
         result = acquire_open_hymnal(args)
     elif args.command == "review-open-hymnal":
         result = review_open_hymnal(args)
+    elif args.command == "acquire-wikisource":
+        result = acquire_wikisource(args)
+    elif args.command == "review-wikisource":
+        result = review_wikisource(args)
     elif args.command == "inspect-corpus":
         result = inspect_corpus(args)
     elif args.command == "ingest-source":
