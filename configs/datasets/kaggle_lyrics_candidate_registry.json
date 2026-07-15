@@ -116,6 +116,46 @@
       "nonempty_lyrics": 288,
       "approx_tokens": 192214,
       "next_action": "Tiny artist-specific private normalization candidate; useful mainly for rap-focused smoke checks."
+    },
+    {
+      "kaggle_ref": "eitanbentora/chords-and-lyrics-dataset",
+      "source_id": "kaggle_private_lyrics_chords_and_lyrics",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/eitanbentora__chords-and-lyrics-dataset/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 135783,
+      "nonempty_lyrics": 135783,
+      "approx_tokens": 48839639,
+      "next_action": "Strip chord markup before lyric-training admission."
+    },
+    {
+      "kaggle_ref": "imuhammad/audio-features-and-lyrics-of-spotify-songs",
+      "source_id": "kaggle_private_lyrics_spotify_audio_features",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/imuhammad__audio-features-and-lyrics-of-spotify-songs/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 18454,
+      "nonempty_lyrics": 18454,
+      "approx_tokens": 9718067,
+      "next_action": "Small private normalization candidate with useful audio-feature metadata."
+    },
+    {
+      "kaggle_ref": "edenbd/150k-lyrics-labeled-with-spotify-valence",
+      "source_id": "kaggle_private_lyrics_spotify_valence_150k",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/edenbd__150k-lyrics-labeled-with-spotify-valence/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 158353,
+      "nonempty_lyrics": 158353,
+      "approx_tokens": 44913068,
+      "next_action": "Private normalization candidate for mood/valence-aware sampling."
+    },
+    {
+      "kaggle_ref": "PromptCloudHQ/taylor-swift-song-lyrics-from-all-the-albums",
+      "source_id": "kaggle_private_lyrics_taylor_swift_albums",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/promptcloudhq__taylor-swift-song-lyrics-from-all-the-albums/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 4862,
+      "nonempty_lyrics": 4862,
+      "approx_tokens": 40336,
+      "next_action": "Line-level artist-specific private candidate; group lines by track before training use."
     }
   ],
   "candidates": [

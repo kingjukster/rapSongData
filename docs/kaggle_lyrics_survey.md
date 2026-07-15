@@ -58,6 +58,7 @@ Kaggle CLI/auth is configured locally through the repo virtual environment. Curr
 - `devdope/900k-spotify`: downloaded and raw-manifested; primary CSV has 551,443 nonempty lyric rows and about 242.7M rough tokens; license label is noncommercial.
 - `bwandowando/spotify-songs-with-attributes-and-lyrics`: downloaded and raw-manifested; song-level lyric file has about 955k nonempty rows, plus a timestamp/alignment file with line-level rows.
 - Smaller raw-manifested sets: `deepshah16/song-lyrics-dataset`, `evabot/spotify-lyrics-dataset`, `notshrirang/spotify-million-song-dataset`, `suraj520/music-dataset-song-information-and-lyrics`, `paultimothymooney/poetry`, and `juicobowley/drake-lyrics`.
+- Additional raw-manifested sets: `eitanbentora/chords-and-lyrics-dataset`, `imuhammad/audio-features-and-lyrics-of-spotify-songs`, `edenbd/150k-lyrics-labeled-with-spotify-valence`, and `PromptCloudHQ/taylor-swift-song-lyrics-from-all-the-albums`.
 
 ## Newly pulled raw snapshots
 
@@ -73,6 +74,10 @@ Kaggle CLI/auth is configured locally through the repo virtual environment. Curr
 | `suraj520/music-dataset-song-information-and-lyrics` | `kaggle_private_lyrics_suraj_music_info` | 799 | 799 | 1.4M | raw-manifested |
 | `paultimothymooney/poetry` | `kaggle_private_lyrics_paultimothy_song_lyrics_txt` | 49 text files | 49 text files | 1.7M | raw-manifested |
 | `juicobowley/drake-lyrics` | `kaggle_private_lyrics_drake_lyrics` | 290 | 288 | 0.2M | raw-manifested |
+| `eitanbentora/chords-and-lyrics-dataset` | `kaggle_private_lyrics_chords_and_lyrics` | 135,783 | 135,783 | 48.8M | raw-manifested; requires chord stripping |
+| `imuhammad/audio-features-and-lyrics-of-spotify-songs` | `kaggle_private_lyrics_spotify_audio_features` | 18,454 | 18,454 | 9.7M | raw-manifested |
+| `edenbd/150k-lyrics-labeled-with-spotify-valence` | `kaggle_private_lyrics_spotify_valence_150k` | 158,353 | 158,353 | 44.9M | raw-manifested |
+| `PromptCloudHQ/taylor-swift-song-lyrics-from-all-the-albums` | `kaggle_private_lyrics_taylor_swift_albums` | 4,862 line rows | 4,862 line rows | 0.04M | raw-manifested; line-level |
 
 To re-plan candidate priority, use:
 
