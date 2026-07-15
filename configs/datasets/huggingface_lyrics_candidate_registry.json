@@ -1,0 +1,188 @@
+{
+  "schema_version": 1,
+  "registry_id": "huggingface-lyrics-private-candidate-registry-v1",
+  "reviewed_at": "2026-07-15",
+  "intended_partition": "private_unknown_rights",
+  "default_training_eligibility": "private_only",
+  "policy": {
+    "purpose": "Track public Hugging Face lyric datasets accumulated for private/personal-use scratch-model data expansion.",
+    "clean_open_core_default": "excluded",
+    "private_research_default": "allowed_after_local_snapshot_and_hash_manifest",
+    "commercial_or_public_release_default": "blocked",
+    "reason": "Hub dataset licenses may describe the dataset package, but modern lyric text still needs separate underlying-rights caution."
+  },
+  "local_raw_snapshots": [
+    {
+      "hf_dataset": "theelderemo/genius-lyrics-cleaned",
+      "source_id": "hf_private_lyrics_theelderemo__genius_lyrics_cleaned",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/theelderemo__genius-lyrics-cleaned/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [
+        "license:mit"
+      ],
+      "row_count": 3179588,
+      "nonempty_lyrics": 3179588,
+      "approx_tokens": 1160916220,
+      "next_action": "High-priority staged normalizer target; exact-dedupe against Kaggle Genius-derived sources first."
+    },
+    {
+      "hf_dataset": "PJMixers-Dev/bigdata-pw_Lyrics1M-en",
+      "source_id": "hf_private_lyrics_pjmixers_dev__bigdata_pw_lyrics1m_en",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/PJMixers-Dev__bigdata-pw_Lyrics1M-en/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 553131,
+      "nonempty_lyrics": 553131,
+      "approx_tokens": 198061838,
+      "next_action": "Normalize after checking overlap with existing Kaggle lyric dumps."
+    },
+    {
+      "hf_dataset": "HowitzerDeBoullion/Multi-Lingual-Lyrics-for-Genre-Classification",
+      "source_id": "hf_private_lyrics_howitzerdeboullion__multi_lingual_lyrics_for_genre_classification",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/HowitzerDeBoullion__Multi-Lingual-Lyrics-for-Genre-Classification/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 596236,
+      "nonempty_lyrics": 596201,
+      "approx_tokens": 177290346,
+      "next_action": "Useful genre/language source; normalize with language filtering."
+    },
+    {
+      "hf_dataset": "Cropinky/rap_lyrics_english",
+      "source_id": "hf_private_lyrics_cropinky__rap_lyrics_english",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/Cropinky__rap_lyrics_english/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 47,
+      "nonempty_lyrics": 46,
+      "approx_tokens": 11022811,
+      "next_action": "Rap-specific text files; split by artist/source file before training use."
+    },
+    {
+      "hf_dataset": "halaction/song-lyrics",
+      "source_id": "hf_private_lyrics_halaction__song_lyrics",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/halaction__song-lyrics/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [
+        "license:apache-2.0"
+      ],
+      "row_count": 53876,
+      "nonempty_lyrics": 53876,
+      "approx_tokens": 19398567,
+      "next_action": "Private normalization candidate."
+    },
+    {
+      "hf_dataset": "Koyd111/hiphop-song-lyrics",
+      "source_id": "hf_private_lyrics_koyd111__hiphop_song_lyrics",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/Koyd111__hiphop-song-lyrics/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 900,
+      "nonempty_lyrics": 900,
+      "approx_tokens": 2561758,
+      "next_action": "Small hip-hop private normalization candidate."
+    },
+    {
+      "hf_dataset": "nateraw/rap-lyrics-v1",
+      "source_id": "hf_private_lyrics_nateraw__rap_lyrics_v1",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/nateraw__rap-lyrics-v1/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 2350,
+      "nonempty_lyrics": 2350,
+      "approx_tokens": 1932410,
+      "next_action": "Small rap private normalization candidate."
+    },
+    {
+      "hf_dataset": "nateraw/rap-lyrics-v2",
+      "source_id": "hf_private_lyrics_nateraw__rap_lyrics_v2",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/nateraw__rap-lyrics-v2/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 7319,
+      "nonempty_lyrics": 7319,
+      "approx_tokens": 684709,
+      "next_action": "Small rap private normalization candidate."
+    },
+    {
+      "hf_dataset": "vancenceho/spotify-lyrics",
+      "source_id": "hf_private_lyrics_vancenceho__spotify_lyrics",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/vancenceho__spotify-lyrics/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [
+        "license:cc0-1.0"
+      ],
+      "row_count": 57650,
+      "nonempty_lyrics": 57650,
+      "approx_tokens": 17570471,
+      "next_action": "Likely overlaps Kaggle Spotify million-song data; dedupe before admission."
+    },
+    {
+      "hf_dataset": "vancenceho/spotify-lyrics-clean",
+      "source_id": "hf_private_lyrics_vancenceho__spotify_lyrics_clean",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/vancenceho__spotify-lyrics-clean/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [
+        "license:cdla-sharing-1.0"
+      ],
+      "row_count": 57438,
+      "nonempty_lyrics": 57438,
+      "approx_tokens": 16327173,
+      "next_action": "Cleaned Spotify lyric candidate; compare against vancenceho/spotify-lyrics."
+    },
+    {
+      "hf_dataset": "theelderemo/lyrics-database",
+      "source_id": "hf_private_lyrics_theelderemo__lyrics_database",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/theelderemo__lyrics-database/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [
+        "license:mit"
+      ],
+      "row_count": 49985,
+      "nonempty_lyrics": 49985,
+      "approx_tokens": 15890524,
+      "next_action": "Private normalization candidate; likely Genius-derived."
+    },
+    {
+      "hf_dataset": "smgriffin/modern-pop-lyrics",
+      "source_id": "hf_private_lyrics_smgriffin__modern_pop_lyrics",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/smgriffin__modern-pop-lyrics/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [
+        "license:mit"
+      ],
+      "row_count": 17174,
+      "nonempty_lyrics": 17174,
+      "approx_tokens": 6632753,
+      "next_action": "Modern-pop private normalization candidate."
+    },
+    {
+      "hf_dataset": "theodoredc/hiphop-lyrics",
+      "source_id": "hf_private_lyrics_theodoredc__hiphop_lyrics",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/theodoredc__hiphop-lyrics/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 15124,
+      "nonempty_lyrics": 15124,
+      "approx_tokens": 10919493,
+      "next_action": "Hip-hop private normalization candidate."
+    }
+  ],
+  "deferred_large_candidates": [
+    {
+      "hf_dataset": "Dr3dre/Genius-song-lyrics-cleaned",
+      "approx_file_bytes": 18426890117,
+      "reason": "Large likely-overlapping cleaned Genius mirror; pull after first HF batch is committed or as a background job."
+    },
+    {
+      "hf_dataset": "amishshah/song_lyrics",
+      "approx_file_bytes": 5663409247,
+      "reason": "Large CSV; likely valuable but should be pulled with D: Hugging Face cache configured."
+    },
+    {
+      "hf_dataset": "asigalov61/Lyrics-MIDI-Dataset",
+      "approx_file_bytes": 13181497573,
+      "reason": "Contains MIDI/model artifacts; pull only selected lyric/corpus artifacts, not model files."
+    }
+  ]
+}
