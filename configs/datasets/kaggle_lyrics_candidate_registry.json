@@ -16,6 +16,108 @@
     "Treat scraped Genius, Spotify, AZLyrics, and generic lyric-site sources as private-only unless item-level rights are later proven.",
     "Preserve Kaggle slug, Kaggle license label, source claims, file manifests, hashes, row counts, language fields, and any explicit scraper/source notes."
   ],
+  "local_raw_snapshots": [
+    {
+      "kaggle_ref": "carlosgdcj/genius-song-lyrics-with-language-information",
+      "source_id": "kaggle_private_lyrics_genius_language_info",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/carlosgdcj__genius-song-lyrics-with-language-information/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 5134856,
+      "nonempty_lyrics": 5134856,
+      "approx_tokens": 2065140764,
+      "next_action": "Use as the next staged English-only normalizer target because it includes language labels."
+    },
+    {
+      "kaggle_ref": "neisse/scrapped-lyrics-from-6-genres",
+      "source_id": "kaggle_private_lyrics_neisse_6_genres",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/neisse__scrapped-lyrics-from-6-genres/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 379931,
+      "nonempty_lyrics": 379931,
+      "approx_tokens": 100268389,
+      "next_action": "Stage-normalize after the language-labeled source; preserve genre labels."
+    },
+    {
+      "kaggle_ref": "devdope/900k-spotify",
+      "source_id": "kaggle_private_lyrics_devdope_900k_spotify",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/devdope__900k-spotify/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 551443,
+      "nonempty_lyrics": 551443,
+      "approx_tokens": 242745130,
+      "next_action": "Use as private/noncommercial-only after exact dedupe and schema-specific normalization."
+    },
+    {
+      "kaggle_ref": "bwandowando/spotify-songs-with-attributes-and-lyrics",
+      "source_id": "kaggle_private_lyrics_bwandowando_spotify_960k",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/bwandowando__spotify-songs-with-attributes-and-lyrics/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 37474412,
+      "nonempty_lyrics": 955307,
+      "approx_tokens": 332087310,
+      "next_action": "Treat song-level rows as primary lyrics and timestamp rows as alignment side data."
+    },
+    {
+      "kaggle_ref": "notshrirang/spotify-million-song-dataset",
+      "source_id": "kaggle_private_lyrics_spotify_million_song",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/notshrirang__spotify-million-song-dataset/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 57650,
+      "nonempty_lyrics": 57650,
+      "approx_tokens": 17570471,
+      "next_action": "Lower-priority private normalization candidate."
+    },
+    {
+      "kaggle_ref": "evabot/spotify-lyrics-dataset",
+      "source_id": "kaggle_private_lyrics_spotify_10k",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/evabot__spotify-lyrics-dataset/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 8674,
+      "nonempty_lyrics": 8674,
+      "approx_tokens": 3588843,
+      "next_action": "Lower-priority private normalization candidate with useful Spotify metadata."
+    },
+    {
+      "kaggle_ref": "deepshah16/song-lyrics-dataset",
+      "source_id": "kaggle_private_lyrics_deepshah_artist_collection",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/deepshah16__song-lyrics-dataset/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 6027,
+      "nonempty_lyrics": 5981,
+      "approx_tokens": 2764256,
+      "next_action": "Preserve JSON sidecars; normalize CSV records only unless JSON fields add useful metadata."
+    },
+    {
+      "kaggle_ref": "suraj520/music-dataset-song-information-and-lyrics",
+      "source_id": "kaggle_private_lyrics_suraj_music_info",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/suraj520__music-dataset-song-information-and-lyrics/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 799,
+      "nonempty_lyrics": 799,
+      "approx_tokens": 1353428,
+      "next_action": "Small metadata-rich private normalization candidate."
+    },
+    {
+      "kaggle_ref": "paultimothymooney/poetry",
+      "source_id": "kaggle_private_lyrics_paultimothy_song_lyrics_txt",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/paultimothymooney__poetry/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "text_file_count": 49,
+      "nonempty_text_files": 49,
+      "approx_tokens": 1682710,
+      "next_action": "Only use lyric-like files; this bundle includes poetry as well as song lyrics."
+    },
+    {
+      "kaggle_ref": "juicobowley/drake-lyrics",
+      "source_id": "kaggle_private_lyrics_drake_lyrics",
+      "snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/juicobowley__drake-lyrics/20260715_credentialed_download",
+      "status": "raw_manifested",
+      "row_count": 290,
+      "nonempty_lyrics": 288,
+      "approx_tokens": 192214,
+      "next_action": "Tiny artist-specific private normalization candidate; useful mainly for rap-focused smoke checks."
+    }
+  ],
   "candidates": [
     {
       "rank": 1,
