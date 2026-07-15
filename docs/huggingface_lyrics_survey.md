@@ -14,11 +14,12 @@ Public Hugging Face pulls are stored under:
 data/corpus_lake/raw/huggingface_lyrics/<namespace>__<repo>/20260715_hf_public_snapshot
 ```
 
-The first public batches downloaded and raw-manifested 15 datasets/artifact sets:
+The public batches downloaded and raw-manifested 16 datasets/artifact sets:
 
 | Hugging Face dataset | Local source id | Rows/docs | Nonempty lyrics/docs | Rough tokens | Status |
 | --- | --- | ---: | ---: | ---: | --- |
 | `theelderemo/genius-lyrics-cleaned` | `hf_private_lyrics_theelderemo__genius_lyrics_cleaned` | 3,179,588 | 3,179,588 | 1,160.9M | raw-manifested |
+| `Dr3dre/Genius-song-lyrics-cleaned` | `hf_private_lyrics_dr3dre__genius_song_lyrics_cleaned` | 5,134,856 | 5,134,633 | 1,563.8M | raw-manifested |
 | `PJMixers-Dev/bigdata-pw_Lyrics1M-en` | `hf_private_lyrics_pjmixers_dev__bigdata_pw_lyrics1m_en` | 553,131 | 553,131 | 198.1M | raw-manifested |
 | `HowitzerDeBoullion/Multi-Lingual-Lyrics-for-Genre-Classification` | `hf_private_lyrics_howitzerdeboullion__multi_lingual_lyrics_for_genre_classification` | 596,236 | 596,201 | 177.3M | raw-manifested |
 | `Cropinky/rap_lyrics_english` | `hf_private_lyrics_cropinky__rap_lyrics_english` | 47 text files | 46 text files | 11.0M | raw-manifested |
@@ -36,16 +37,16 @@ The first public batches downloaded and raw-manifested 15 datasets/artifact sets
 
 Batch total before dedupe, excluding unextracted Asigalov binary/zip artifacts:
 
-- 7,965,016 rows/docs
-- 7,964,980 nonempty lyrics/docs
-- about 3.02B rough tokens
+- 13,099,872 rows/docs
+- 13,099,613 nonempty lyrics/docs
+- about 4.58B rough tokens
 
 ## Deferred large candidates
 
-- `Dr3dre/Genius-song-lyrics-cleaned`: about 18.4 GB of Parquet; likely overlaps the cleaned Genius/Kaggle sources.
+- `Dr3dre/Genius-song-lyrics-cleaned`: pulled and raw-manifested; 32 parquet shards are the canonical counted copy, with the CSV retained as a redundant raw export.
 - `amishshah/song_lyrics`: pulled and raw-manifested with D:-pinned cache, then duplicate cache removed.
 - `asigalov61/Lyrics-MIDI-Dataset`: selected lyric/corpus artifacts pulled; model files skipped.
 
 ## Recommended next step
 
-Normalize and exact-dedupe `theelderemo/genius-lyrics-cleaned` first, then decide whether the larger `Dr3dre` mirror is still worth downloading.
+Normalize and exact-dedupe the large Genius-derived sources first: `Dr3dre/Genius-song-lyrics-cleaned`, `theelderemo/genius-lyrics-cleaned`, `amishshah/song_lyrics`, and the Kaggle Genius-style dumps likely overlap heavily.

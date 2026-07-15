@@ -26,6 +26,19 @@
       "next_action": "High-priority staged normalizer target; exact-dedupe against Kaggle Genius-derived sources first."
     },
     {
+      "hf_dataset": "Dr3dre/Genius-song-lyrics-cleaned",
+      "source_id": "hf_private_lyrics_dr3dre__genius_song_lyrics_cleaned",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/Dr3dre__Genius-song-lyrics-cleaned/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [
+        "license:cc-by-4.0"
+      ],
+      "row_count": 5134856,
+      "nonempty_lyrics": 5134633,
+      "approx_tokens": 1563780699,
+      "next_action": "Very large Genius-derived private normalizer target; use parquet shards as canonical source, keep CSV as redundant raw export, and exact-dedupe against Kaggle/theelderemo/amishshah before admission."
+    },
+    {
       "hf_dataset": "PJMixers-Dev/bigdata-pw_Lyrics1M-en",
       "source_id": "hf_private_lyrics_pjmixers_dev__bigdata_pw_lyrics1m_en",
       "snapshot": "data/corpus_lake/raw/huggingface_lyrics/PJMixers-Dev__bigdata-pw_Lyrics1M-en/20260715_hf_public_snapshot",
@@ -197,11 +210,5 @@
       "next_action": "Extract the cleaned subset zip or processed corpus only if MIDI/lyric alignment becomes useful."
     }
   ],
-  "deferred_large_candidates": [
-    {
-      "hf_dataset": "Dr3dre/Genius-song-lyrics-cleaned",
-      "approx_file_bytes": 18426890117,
-      "reason": "Large likely-overlapping cleaned Genius mirror; pull after first HF batch is committed or as a background job."
-    }
-  ]
+  "deferred_large_candidates": []
 }
