@@ -32,7 +32,13 @@
         "underlying lyric copyrights not proven by Kaggle license label",
         "source provenance needs local inspection"
       ],
-      "next_action": "Download first after Kaggle credentials are configured; inspect schema, language, duplicates, and source notes."
+      "local_status": "downloaded_normalized_admitted_private",
+      "local_snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/d3stron__english-music-lyrics-5-genres-500k/20260715_credentialed_download",
+      "normalized_snapshot": "data/corpus_lake/normalized/kaggle_private_lyrics_english_5genres_500k/20260715_credentialed_download",
+      "local_row_count": 550000,
+      "local_nonempty_lyrics": 550000,
+      "local_approx_tokens": 175316754,
+      "next_action": "Use only through private profiles; do not promote to clean/open core without underlying lyric-rights review."
     },
     {
       "rank": 2,
@@ -50,7 +56,13 @@
         "scraped lyric source",
         "large enough to require staged validation before full ingest"
       ],
-      "next_action": "Download as a private-only bulk source if disk/time budget allows; sample first and dedupe against existing song_lyrics.csv."
+      "local_status": "downloaded_raw_manifested_pending_normalization",
+      "local_snapshot": "data/corpus_lake/raw/kaggle_private_lyrics/nikhilnayak123__5-million-song-lyrics-dataset/20260715_credentialed_download",
+      "local_file": "ds2.csv",
+      "local_row_count": 5913411,
+      "local_nonempty_lyrics": 5912074,
+      "local_approx_tokens": 2098682382,
+      "next_action": "Normalize in a staged private-only pass, then dedupe against existing private lyric corpora before admission."
     },
     {
       "rank": 3,

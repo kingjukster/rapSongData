@@ -18,11 +18,15 @@ The practical reason is simple: Kaggle can show a license for the dataset packag
    - Best first private-use target.
    - Good scale, English-only, genre labels.
    - Kaggle label observed as MIT, but lyric rights still need private-only treatment.
+   - Local status: downloaded, normalized, and admitted to `scratch-private-extended-v1` as `kaggle_private_lyrics_english_5genres_500k`.
+   - Local snapshot stats: 550,000 rows, 550,000 nonempty lyrics, about 175.3M rough tokens.
 
 2. `nikhilnayak123/5-million-song-lyrics-dataset`
    - Best bulk-volume target.
    - License observed as Unknown; listing references a scraper.
    - Use only in private partition; download/sample before full ingest because it is large.
+   - Local status: raw Kaggle snapshot downloaded and manifested; not yet normalized/admitted.
+   - Local snapshot stats: 5,913,411 rows, 5,912,074 nonempty lyrics, about 2.10B rough tokens.
 
 3. `carlosgdcj/genius-song-lyrics-with-language-information`
    - Useful because language labels help filtering.
@@ -38,12 +42,12 @@ The practical reason is simple: Kaggle can show a license for the dataset packag
 
 ## Local status
 
-Kaggle CLI/auth was not configured during this survey:
+Kaggle CLI/auth is configured locally through the repo virtual environment. The first two candidates have local snapshots:
 
-- `kaggle` command not found
-- `%USERPROFILE%\.kaggle\kaggle.json` not present
+- `d3stron/english-music-lyrics-5-genres-500k`: downloaded, normalized, admitted to the private profile, and verified through the source-governance commands.
+- `nikhilnayak123/5-million-song-lyrics-dataset`: downloaded and raw-manifested; keep pending until a staged normalizer and dedupe pass are run.
 
-Once credentials are configured, use:
+To re-plan candidate priority, use:
 
 ```powershell
 python scripts\plan_kaggle_lyrics_private_ingest.py --registry configs\datasets\kaggle_lyrics_candidate_registry.json
