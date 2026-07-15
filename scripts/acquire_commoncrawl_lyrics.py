@@ -200,6 +200,13 @@ def extract_lyrics(url: str, html_bytes: bytes) -> ExtractResult | None:
                 re.compile(r"<p[^>]+id=[\"']songLyricsDiv[\"'][^>]*>(.*?)</p>", re.IGNORECASE | re.DOTALL),
             )
         )
+    if "songmeanings.com" in host:
+        extractor_patterns.append(
+            (
+                "songmeanings.com:div.lyric-box",
+                re.compile(r"<div[^>]+class=[\"'][^\"']*lyric-box[^\"']*[\"'][^>]*>(.*?)</div>", re.IGNORECASE | re.DOTALL),
+            )
+        )
     if "azlyrics.com" in host:
         extractor_patterns.append(
             (
