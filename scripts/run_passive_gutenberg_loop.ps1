@@ -47,6 +47,11 @@ function Convert-CommandOutputToJson {
     return $text.Substring($start, $end - $start + 1) | ConvertFrom-Json
 }
 
+function Quote-ProcessArgument {
+    param([string]$Value)
+    '"' + ($Value -replace '"', '\"') + '"'
+}
+
 function Invoke-ScratchJson {
     param([string[]]$Arguments, [string]$Name)
     Write-LoopEvent -Event 'command_started' -Data @{ name = $Name; arguments = $Arguments }
@@ -58,14 +63,14 @@ function Invoke-ScratchJson {
     $process.StartInfo.RedirectStandardOutput = $true
     $process.StartInfo.RedirectStandardError = $true
     $process.StartInfo.CreateNoWindow = $true
-    $process.StartInfo.ArgumentList.Add('-NoProfile')
-    $process.StartInfo.ArgumentList.Add('-ExecutionPolicy')
-    $process.StartInfo.ArgumentList.Add('Bypass')
-    $process.StartInfo.ArgumentList.Add('-File')
-    $process.StartInfo.ArgumentList.Add($Runner)
-    foreach ($argument in $Arguments) {
-        $process.StartInfo.ArgumentList.Add($argument)
-    }
+    $processArgs = @(
+        '-NoProfile'
+        '-ExecutionPolicy'
+        'Bypass'
+        '-File'
+        (Quote-ProcessArgument $Runner)
+    ) + ($Arguments | ForEach-Object { Quote-ProcessArgument $_ })
+    $process.StartInfo.Arguments = ($processArgs -join ' ')
     [void]$process.Start()
     $stdout = $process.StandardOutput.ReadToEnd()
     $stderr = $process.StandardError.ReadToEnd()
