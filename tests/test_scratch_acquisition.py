@@ -7,8 +7,11 @@ import unittest
 from pathlib import Path
 
 from rap_song_data.scratch.acquisition import (
+    clean_abc_lyric_line,
     normalized_record,
+    parse_abc_tune,
     review_gutenberg_record,
+    review_open_hymnal_record,
     select_gutenberg_candidates,
     seen_gutenberg_ids,
     strip_gutenberg_wrapper,
@@ -202,6 +205,58 @@ class ScratchAcquisitionTests(unittest.TestCase):
         review = review_gutenberg_record(record, raw_text)
         self.assertEqual(review["rights_decision"], "quarantine")
         self.assertIn("restricted_marker:permission of the copyright holder", review["issues"])
+
+    def test_clean_abc_lyric_line_removes_markup(self):
+        self.assertEqual(
+            clean_abc_lyric_line("1.~Bless-ed Je- sus _at | Thy Word *"),
+            "Bless-ed Jesus at | Thy Word",
+        )
+
+    def test_parse_abc_tune_extracts_title_lyrics_and_copyright(self):
+        tune = parse_abc_tune(
+            [
+                "X: 22",
+                "T: Blessed Jesus at Thy Word",
+                "C: Words: Tobias Clausnitzer, 1663.",
+                "C: copyright: public domain. This score is a part of the Open Hymnal Project.",
+                "w: Bless-ed Je-sus, at Thy Word",
+                "w: We are gathered all to hear Thee;",
+            ]
+        )
+        self.assertEqual(tune["source_item_id"], "22")
+        self.assertEqual(tune["title"], "Blessed Jesus at Thy Word")
+        self.assertIn("Bless-ed Je-sus, at Thy Word", tune["lyrics"])
+        self.assertEqual(len(tune["copyright_lines"]), 1)
+        self.assertEqual(len(tune["raw_abc_sha256"]), 64)
+
+    def test_review_open_hymnal_record_approves_public_domain_item(self):
+        record = {
+            "source_item_id": "22",
+            "record_id": "abc",
+            "title": "Blessed Jesus at Thy Word",
+            "word_count": 24,
+            "approx_tokens": 32,
+            "copyright_lines": [
+                "copyright: public domain. This score is a part of the Open Hymnal Project."
+            ],
+        }
+        review = review_open_hymnal_record(record)
+        self.assertEqual(review["rights_decision"], "approved_release_candidate")
+        self.assertEqual(review["rights_status"], "reviewed_public_domain_abc_item")
+
+    def test_review_open_hymnal_record_quarantines_non_public_domain_item(self):
+        record = {
+            "source_item_id": "23",
+            "record_id": "def",
+            "title": "Restricted Hymn",
+            "word_count": 24,
+            "approx_tokens": 32,
+            "copyright_lines": ["Copyright: may be freely reproduced provided it is not altered."],
+        }
+        review = review_open_hymnal_record(record)
+        self.assertEqual(review["rights_decision"], "quarantine")
+        self.assertIn("missing_public_domain_item_statement", review["issues"])
+        self.assertIn("restricted_or_non_pd_marker:provided it is not altered", review["issues"])
 
 
 if __name__ == "__main__":

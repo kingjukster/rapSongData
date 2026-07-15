@@ -5,9 +5,13 @@ import json
 
 from .acquisition import (
     acquire_gutenberg,
+    acquire_open_hymnal,
     add_gutenberg_arguments,
     add_gutenberg_review_arguments,
+    add_open_hymnal_arguments,
+    add_open_hymnal_review_arguments,
     review_gutenberg,
+    review_open_hymnal,
 )
 from .corpus import add_build_arguments, build_corpus
 from .compliance import add_compliance_arguments, analyze_compliance
@@ -75,6 +79,16 @@ def build_parser() -> argparse.ArgumentParser:
         "review-gutenberg", help="Review acquired Gutenberg records for item-level rights and quality evidence."
     )
     add_gutenberg_review_arguments(gutenberg_review_parser)
+
+    open_hymnal_parser = subparsers.add_parser(
+        "acquire-open-hymnal", help="Run a bounded Open Hymnal ABC acquisition pilot."
+    )
+    add_open_hymnal_arguments(open_hymnal_parser)
+
+    open_hymnal_review_parser = subparsers.add_parser(
+        "review-open-hymnal", help="Review Open Hymnal ABC records for item-level public-domain evidence."
+    )
+    add_open_hymnal_review_arguments(open_hymnal_review_parser)
 
     inspect_parser = subparsers.add_parser(
         "inspect-corpus", help="Generate a composition and governance report for a scratch corpus."
@@ -181,6 +195,10 @@ def main() -> None:
         result = acquire_gutenberg(args)
     elif args.command == "review-gutenberg":
         result = review_gutenberg(args)
+    elif args.command == "acquire-open-hymnal":
+        result = acquire_open_hymnal(args)
+    elif args.command == "review-open-hymnal":
+        result = review_open_hymnal(args)
     elif args.command == "inspect-corpus":
         result = inspect_corpus(args)
     elif args.command == "ingest-source":

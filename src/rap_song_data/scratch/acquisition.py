@@ -17,6 +17,9 @@ GUTENBERG_CATALOG_URL = "https://www.gutenberg.org/cache/epub/feeds/pg_catalog.c
 GUTENBERG_ROBOT_POLICY_URL = "https://www.gutenberg.org/policy/robot_access.html"
 GUTENBERG_OFFLINE_CATALOGS_URL = "https://www.gutenberg.org/ebooks/offline_catalogs.html"
 SOURCE_ID = "project_gutenberg_songbooks"
+OPEN_HYMNAL_SOURCE_ID = "open_hymnal"
+OPEN_HYMNAL_ABC_URL = "http://openhymnal.org/OpenHymnal2014.06.abc"
+OPEN_HYMNAL_COPYING_URL = "http://openhymnal.org/copying.html"
 KEYWORDS = (
     "song",
     "songs",
@@ -38,6 +41,7 @@ KEYWORDS = (
 WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?")
 START_RE = re.compile(r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.I)
 END_RE = re.compile(r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.I)
+ABC_FIELD_RE = re.compile(r"^([A-Z]):\s*(.*)$")
 
 
 def _urlretrieve(url: str, path: Path, *, timeout: int = 60) -> None:
@@ -425,6 +429,313 @@ def review_gutenberg(args: argparse.Namespace) -> dict[str, Any]:
     return manifest
 
 
+def ensure_open_hymnal_abc(raw_dir: Path, *, force: bool = False) -> Path:
+    abc_path = raw_dir / "OpenHymnal2014.06.abc"
+    if not abc_path.exists() or force:
+        _urlretrieve(OPEN_HYMNAL_ABC_URL, abc_path)
+    return abc_path
+
+
+def iter_abc_tunes(text: str) -> Iterable[dict[str, Any]]:
+    current: list[str] = []
+    prelude: list[str] = []
+    in_tune = False
+    for raw_line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if raw_line.startswith("X:"):
+            if current:
+                yield parse_abc_tune(current)
+            current = [*prelude[-24:], raw_line]
+            prelude = []
+            in_tune = True
+            continue
+        if in_tune:
+            current.append(raw_line)
+        else:
+            prelude.append(raw_line)
+    if current:
+        yield parse_abc_tune(current)
+
+
+def clean_abc_lyric_line(value: str) -> str:
+    text = value.strip()
+    text = re.sub(r"^\d+\.\s*~?", "", text)
+    text = text.replace("~", " ")
+    text = text.replace("\\-", "-")
+    text = re.sub(r"(?<=\w)-\s+(?=\w)", "", text)
+    text = re.sub(r"\s+", " ", text)
+    text = text.replace(" _", " ").replace("_", "")
+    text = text.replace("*", "").strip(" |")
+    return text.strip()
+
+
+def parse_abc_tune(lines: list[str]) -> dict[str, Any]:
+    fields: dict[str, list[str]] = {}
+    oh_fields: dict[str, list[str]] = {}
+    lyrics: list[str] = []
+    comments: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("%OH"):
+            key, _, value = stripped[1:].partition(" ")
+            oh_fields.setdefault(key.strip(), []).append(value.strip())
+            comments.append(stripped)
+            continue
+        if stripped.startswith("%"):
+            comments.append(stripped)
+            continue
+        if stripped.startswith("w:"):
+            lyric = clean_abc_lyric_line(stripped[2:])
+            if lyric:
+                lyrics.append(lyric)
+            continue
+        match = ABC_FIELD_RE.match(stripped)
+        if match:
+            fields.setdefault(match.group(1), []).append(match.group(2).strip())
+    raw = "\n".join(lines).strip()
+    title = fields.get("T", [""])[0]
+    text = "\n".join(lyrics).strip()
+    source_item_id = fields.get("X", [hash_text(raw, digest_size=8)])[0].strip()
+    return {
+        "source_item_id": source_item_id,
+        "title": title,
+        "composer_lines": fields.get("C", []),
+        "source_lines": fields.get("S", []),
+        "oh_fields": oh_fields,
+        "lyrics": text,
+        "raw_abc": raw,
+        "raw_abc_sha256": hash_text(raw, digest_size=32),
+        "copyright_lines": [
+            line for line in fields.get("C", []) if "copyright" in line.lower()
+        ],
+    }
+
+
+def normalized_open_hymnal_record(tune: dict[str, Any], *, retrieved_at: str, abc_manifest: dict[str, Any]) -> dict[str, Any]:
+    text = str(tune.get("lyrics") or "").strip()
+    source_item_id = str(tune.get("source_item_id") or "")
+    title = str(tune.get("title") or f"Open Hymnal {source_item_id}").strip()
+    source_url = f"{OPEN_HYMNAL_ABC_URL}#X:{source_item_id}"
+    return {
+        "record_id": hash_text(f"{OPEN_HYMNAL_SOURCE_ID}:{source_item_id}", digest_size=16),
+        "source_id": OPEN_HYMNAL_SOURCE_ID,
+        "source_item_id": source_item_id,
+        "retrieved_at": retrieved_at,
+        "source_url": source_url,
+        "source_url_hash": hash_text(source_url, digest_size=16),
+        "rights_tier": "release_candidate",
+        "rights_status": "item_review_required",
+        "license_id": "open_hymnal_item_specific",
+        "license_evidence": OPEN_HYMNAL_COPYING_URL,
+        "license_evidence_scope": "abc_item_required",
+        "title": title,
+        "authors": "; ".join(tune.get("composer_lines") or []),
+        "issued": "2014.06",
+        "language": "en",
+        "subjects": "; ".join(tune.get("oh_fields", {}).get("OHTOPICS", [])),
+        "bookshelves": "Open Hymnal",
+        "locc": None,
+        "text_sha256": tune.get("raw_abc_sha256") or abc_manifest["sha256"],
+        "normalized_text_sha256": hash_text(text, digest_size=32),
+        "source_archive_sha256": abc_manifest["sha256"],
+        "dedupe_cluster_id": None,
+        "removal_key": f"{OPEN_HYMNAL_SOURCE_ID}:{source_item_id}",
+        "split_group_id": None,
+        "split_group_status": "pending_deduplication",
+        "word_count": len(WORD_RE.findall(text)),
+        "approx_tokens": approx_tokens(text),
+        "copyright_lines": tune.get("copyright_lines") or [],
+        "text": text,
+    }
+
+
+def review_open_hymnal_record(record: dict[str, Any]) -> dict[str, Any]:
+    evidence = "\n".join(str(line) for line in record.get("copyright_lines") or [])
+    lower = evidence.lower()
+    issues: list[str] = []
+    if "copyright: public domain" not in lower:
+        issues.append("missing_public_domain_item_statement")
+    restricted_markers = [
+        "all rights reserved",
+        "used by permission",
+        "provided it is not altered",
+        "may be freely reproduced",
+        "creative commons",
+    ]
+    for marker in restricted_markers:
+        if marker in lower:
+            issues.append(f"restricted_or_non_pd_marker:{marker}")
+    if int(record.get("word_count") or 0) < 20:
+        issues.append("too_short")
+    decision = "approved_release_candidate" if not issues else "quarantine"
+    return {
+        "source_id": OPEN_HYMNAL_SOURCE_ID,
+        "source_item_id": record["source_item_id"],
+        "record_id": record["record_id"],
+        "title": record.get("title"),
+        "authors": record.get("authors"),
+        "source_url": record.get("source_url"),
+        "source_url_hash": record.get("source_url_hash"),
+        "text_sha256": record.get("text_sha256"),
+        "normalized_text_sha256": record.get("normalized_text_sha256"),
+        "word_count": record.get("word_count"),
+        "approx_tokens": record.get("approx_tokens"),
+        "rights_decision": decision,
+        "rights_tier": "release_candidate" if decision == "approved_release_candidate" else "quarantine",
+        "rights_status": "reviewed_public_domain_abc_item" if decision == "approved_release_candidate" else "needs_manual_review",
+        "license_id": "open_hymnal_public_domain_item",
+        "license_evidence": OPEN_HYMNAL_COPYING_URL,
+        "license_evidence_scope": "abc_item_header",
+        "quality_decision": "accepted" if decision == "approved_release_candidate" else "quarantine",
+        "issues": issues,
+    }
+
+
+def acquire_open_hymnal(args: argparse.Namespace) -> dict[str, Any]:
+    started = time.monotonic()
+    started_at = utc_now()
+    raw_root = Path(args.raw_dir)
+    normalized_root = Path(args.normalized_dir)
+    output_dir = Path(args.output_dir) / OPEN_HYMNAL_SOURCE_ID
+    snapshot_id = args.snapshot_id or started_at.replace(":", "").replace("+", "Z")
+    raw_dir = raw_root / OPEN_HYMNAL_SOURCE_ID / snapshot_id
+    normalized_dir = normalized_root / OPEN_HYMNAL_SOURCE_ID / snapshot_id
+    abc_path = ensure_open_hymnal_abc(raw_dir, force=args.force_download)
+    abc_manifest = path_manifest(abc_path)
+    abc_text = abc_path.read_text(encoding="utf-8", errors="ignore")
+    retrieved_at = utc_now()
+    records: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    token_total = 0
+    tunes_seen = 0
+    for tune in iter_abc_tunes(abc_text):
+        tunes_seen += 1
+        if len(records) >= args.max_records or token_total >= args.raw_target_tokens:
+            break
+        record = normalized_open_hymnal_record(tune, retrieved_at=retrieved_at, abc_manifest=abc_manifest)
+        if record["word_count"] < args.min_words:
+            rejected.append(
+                {
+                    "source_item_id": record["source_item_id"],
+                    "title": record["title"],
+                    "reason": "too_short",
+                }
+            )
+            continue
+        records.append(record)
+        token_total += int(record["approx_tokens"])
+
+    records_path = normalized_dir / "records.jsonl"
+    rejected_path = normalized_dir / "rejected.jsonl"
+    write_jsonl(records_path, records)
+    write_jsonl(rejected_path, rejected)
+    manifest = {
+        "schema_version": 1,
+        "generated_at": utc_now(),
+        "started_at": started_at,
+        "command": command_record(),
+        "operation": "acquire-open-hymnal",
+        "source_id": OPEN_HYMNAL_SOURCE_ID,
+        "status": "pilot_complete",
+        "snapshot_id": snapshot_id,
+        "raw_dir": str(raw_dir),
+        "normalized_dir": str(normalized_dir),
+        "official_sources": {
+            "abc_url": OPEN_HYMNAL_ABC_URL,
+            "copying_url": OPEN_HYMNAL_COPYING_URL,
+        },
+        "selection": {
+            "max_records": args.max_records,
+            "min_words": args.min_words,
+            "raw_target_tokens": args.raw_target_tokens,
+        },
+        "rights": {
+            "training_eligibility": "conditional",
+            "admission_status": "not_admitted",
+            "note": "Rows are release candidates only after ABC item-level public-domain review.",
+        },
+        "counts": {
+            "tunes_considered": tunes_seen,
+            "accepted_records": len(records),
+            "rejected_records": len(rejected),
+            "approx_tokens": token_total,
+        },
+        "outputs": {
+            "abc": abc_manifest,
+            "records": path_manifest(records_path),
+            "rejected": path_manifest(rejected_path),
+        },
+        "wall_seconds": round(time.monotonic() - started, 3),
+    }
+    output_dir.mkdir(parents=True, exist_ok=True)
+    write_json(output_dir / "acquisition_manifest.json", manifest)
+    return manifest
+
+
+def review_open_hymnal(args: argparse.Namespace) -> dict[str, Any]:
+    started = time.monotonic()
+    normalized_root = Path(args.normalized_dir) / OPEN_HYMNAL_SOURCE_ID
+    snapshot_dir = normalized_root / args.snapshot_id if args.snapshot_id else _latest_snapshot(normalized_root)
+    snapshot_id = snapshot_dir.name
+    records_path = snapshot_dir / "records.jsonl"
+    if not records_path.exists():
+        raise ValueError(f"Missing Open Hymnal records file: {records_path}")
+    review_dir = Path(args.output_dir) / OPEN_HYMNAL_SOURCE_ID / "reviews" / snapshot_id
+    reviews: list[dict[str, Any]] = []
+    approved_tokens = 0
+    quarantined_tokens = 0
+    for record in iter_jsonl(records_path):
+        review = review_open_hymnal_record(record)
+        if review["rights_decision"] == "approved_release_candidate":
+            approved_tokens += int(review.get("approx_tokens") or 0)
+        else:
+            quarantined_tokens += int(review.get("approx_tokens") or 0)
+        reviews.append(review)
+    review_path = review_dir / "item_reviews.jsonl"
+    approved_records_path = review_dir / "approved_records.jsonl"
+    write_jsonl(review_path, reviews)
+    approved = [row for row in reviews if row["rights_decision"] == "approved_release_candidate"]
+    quarantined = [row for row in reviews if row["rights_decision"] != "approved_release_candidate"]
+    approved_ids = {row["source_item_id"] for row in approved}
+    approved_records = [row for row in iter_jsonl(records_path) if row["source_item_id"] in approved_ids]
+    write_jsonl(approved_records_path, approved_records)
+    admission_allowed = (
+        len(quarantined) == 0 and len(approved) > 0
+    ) or (args.allow_partial_admission and len(approved) > 0)
+    manifest = {
+        "schema_version": 1,
+        "generated_at": utc_now(),
+        "command": command_record(),
+        "operation": "review-open-hymnal",
+        "source_id": OPEN_HYMNAL_SOURCE_ID,
+        "snapshot_id": snapshot_id,
+        "review_policy": {
+            "jurisdiction": "US",
+            "basis": "ABC item metadata contains a public-domain copyright line and no restricted marker.",
+            "copying_policy_url": OPEN_HYMNAL_COPYING_URL,
+            "manual_review_required_for_quarantine": True,
+        },
+        "profile_eligibility": ["scratch-core-open-v1", "scratch-research-nc-v1", "scratch-private-extended-v1"],
+        "admission_allowed": admission_allowed,
+        "admission_scope": "all_reviewed_records" if len(quarantined) == 0 else "approved_records_only",
+        "counts": {
+            "reviewed_records": len(reviews),
+            "approved_records": len(approved),
+            "quarantined_records": len(quarantined),
+            "approved_approx_tokens": approved_tokens,
+            "quarantined_approx_tokens": quarantined_tokens,
+        },
+        "inputs": {"records": path_manifest(records_path)},
+        "outputs": {
+            "item_reviews": path_manifest(review_path),
+            "approved_records": path_manifest(approved_records_path),
+        },
+        "wall_seconds": round(time.monotonic() - started, 3),
+    }
+    write_json(review_dir / "review_manifest.json", manifest)
+    write_json(Path(args.output_dir) / OPEN_HYMNAL_SOURCE_ID / "review_manifest.json", manifest)
+    return manifest
+
+
 def add_gutenberg_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--raw-dir", type=Path, default=Path("data/corpus_lake/raw"))
     parser.add_argument("--normalized-dir", type=Path, default=Path("data/corpus_lake/normalized"))
@@ -442,6 +753,24 @@ def add_gutenberg_arguments(parser: argparse.ArgumentParser) -> None:
 
 def add_gutenberg_review_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--raw-dir", type=Path, default=Path("data/corpus_lake/raw"))
+    parser.add_argument("--normalized-dir", type=Path, default=Path("data/corpus_lake/normalized"))
+    parser.add_argument("--output-dir", type=Path, default=Path("data/scratch/catalog/v2/sources"))
+    parser.add_argument("--snapshot-id")
+    parser.add_argument("--allow-partial-admission", action="store_true")
+
+
+def add_open_hymnal_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--raw-dir", type=Path, default=Path("data/corpus_lake/raw"))
+    parser.add_argument("--normalized-dir", type=Path, default=Path("data/corpus_lake/normalized"))
+    parser.add_argument("--output-dir", type=Path, default=Path("data/scratch/catalog/v2/sources"))
+    parser.add_argument("--snapshot-id")
+    parser.add_argument("--max-records", type=int, default=100)
+    parser.add_argument("--raw-target-tokens", type=int, default=250_000)
+    parser.add_argument("--min-words", type=int, default=20)
+    parser.add_argument("--force-download", action="store_true")
+
+
+def add_open_hymnal_review_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--normalized-dir", type=Path, default=Path("data/corpus_lake/normalized"))
     parser.add_argument("--output-dir", type=Path, default=Path("data/scratch/catalog/v2/sources"))
     parser.add_argument("--snapshot-id")
