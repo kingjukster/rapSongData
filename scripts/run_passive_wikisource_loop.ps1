@@ -1,11 +1,12 @@
 [CmdletBinding()]
 param(
     [int]$MaxCycles = 6,
-    [int]$SleepSeconds = 900,
-    [int]$BatchRecords = 20,
-    [int]$RawTargetTokens = 1000000,
-    [int]$CandidateLimit = 5000,
+    [int]$SleepSeconds = 1800,
+    [int]$BatchRecords = 10,
+    [int]$RawTargetTokens = 50000,
+    [int]$CandidateLimit = 20,
     [double]$DelaySeconds = 2.0,
+    [string[]]$Categories = @('Song lyrics', 'Ballads', 'Hymns', 'Songs'),
     [string]$RunId = (Get-Date -Format 'yyyyMMdd_HHmmss'),
     [switch]$SkipTokenizer,
     [switch]$Once
@@ -15,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 $RepoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Runner = Join-Path $RepoRoot 'scripts/run_rap_scratch_safe.ps1'
 . (Join-Path $RepoRoot 'scripts/scratch_profile_refresh_lock.ps1')
-$RunDir = Join-Path $RepoRoot "data/scratch/passive_gutenberg/$RunId"
+$RunDir = Join-Path $RepoRoot "data/scratch/passive_wikisource/$RunId"
 $LogPath = Join-Path $RunDir 'passive_loop.jsonl'
 $StopPath = Join-Path $RunDir 'STOP'
 $PidPath = Join-Path $RunDir 'pid.txt'
@@ -130,6 +131,7 @@ Write-LoopEvent -Event 'loop_started' -Data @{
     raw_target_tokens = $RawTargetTokens
     candidate_limit = $CandidateLimit
     delay_seconds = $DelaySeconds
+    categories = $Categories
     skip_tokenizer = [bool]$SkipTokenizer
     stop_path = $StopPath
 }
@@ -143,32 +145,41 @@ while ($MaxCycles -le 0 -or $cycle -lt $MaxCycles) {
     $cycle += 1
     try {
         Write-LoopEvent -Event 'cycle_started' -Data @{ cycle = $cycle }
-        $acquire = Invoke-ScratchJson -Name "cycle_${cycle}_acquire" -Arguments @(
-            'acquire-gutenberg',
+        $categoryArgs = @()
+        foreach ($category in $Categories) {
+            $categoryArgs += $category
+        }
+        $acquireArgs = @(
+            'acquire-wikisource',
+            '--categories'
+        )
+        $acquireArgs += $categoryArgs
+        $acquireArgs += @(
             '--max-records', [string]$BatchRecords,
             '--raw-target-tokens', [string]$RawTargetTokens,
             '--candidate-limit', [string]$CandidateLimit,
             '--delay-seconds', [string]$DelaySeconds,
             '--skip-seen'
         )
+        $acquire = Invoke-ScratchJson -Name "cycle_${cycle}_acquire" -Arguments $acquireArgs
         $snapshot = [string]$acquire.snapshot_id
         $accepted = [int]$acquire.counts.accepted_records
         $rawTokens = [int]$acquire.counts.approx_tokens
 
         Invoke-ScratchJson -Name "cycle_${cycle}_ingest" -Arguments @(
             'ingest-source',
-            '--source', 'project_gutenberg_songbooks',
-            '--snapshot-dir', "data/corpus_lake/normalized/project_gutenberg_songbooks/$snapshot",
-            '--reason', "passive-gutenberg-cycle-$cycle-acquired"
+            '--source', 'wikisource_lyrics',
+            '--snapshot-dir', "data/corpus_lake/normalized/wikisource_lyrics/$snapshot",
+            '--reason', "passive-wikisource-cycle-$cycle-acquired"
         ) | Out-Null
         Invoke-ScratchJson -Name "cycle_${cycle}_audit" -Arguments @(
             'audit-source',
-            '--source', 'project_gutenberg_songbooks',
+            '--source', 'wikisource_lyrics',
             '--allow-conditional',
-            '--reason', "passive-gutenberg-cycle-$cycle-needs-item-review"
+            '--reason', "passive-wikisource-cycle-$cycle-needs-item-review"
         ) | Out-Null
         $review = Invoke-ScratchJson -Name "cycle_${cycle}_review" -Arguments @(
-            'review-gutenberg',
+            'review-wikisource',
             '--snapshot-id', $snapshot,
             '--allow-partial-admission'
         )
@@ -178,23 +189,23 @@ while ($MaxCycles -le 0 -or $cycle -lt $MaxCycles) {
 
         if ($approved -gt 0) {
             Write-LoopEvent -Event 'profile_refresh_lock_wait_started' -Data @{ cycle = $cycle }
-            $refresh = Invoke-WithScratchProfileRefreshLock -RepoRoot $RepoRoot -Owner "passive-gutenberg:$RunId:cycle-$cycle" -Body {
+            $refresh = Invoke-WithScratchProfileRefreshLock -RepoRoot $RepoRoot -Owner "passive-wikisource:$RunId:cycle-$cycle" -Body {
                 Write-LoopEvent -Event 'profile_refresh_lock_acquired' -Data @{ cycle = $cycle }
                 Invoke-ScratchJson -Name "cycle_${cycle}_admit" -Arguments @(
                     'admit-source',
-                    '--source', 'project_gutenberg_songbooks',
-                    '--rights-evidence', 'data/scratch/catalog/v2/sources/project_gutenberg_songbooks/review_manifest.json',
-                    '--reason', "passive-gutenberg-cycle-$cycle-admit-approved-subset"
+                    '--source', 'wikisource_lyrics',
+                    '--rights-evidence', 'data/scratch/catalog/v2/sources/wikisource_lyrics/review_manifest.json',
+                    '--reason', "passive-wikisource-cycle-$cycle-admit-approved-subset"
                 ) | Out-Null
                 Invoke-ScratchJson -Name "cycle_${cycle}_build_core_profile" -Arguments @(
                     'build-corpus',
                     '--profile', 'scratch-core-open-v1',
-                    '--reason', "passive-gutenberg-cycle-$cycle-approved-subset"
+                    '--reason', "passive-wikisource-cycle-$cycle-approved-subset"
                 ) | Out-Null
                 Invoke-ScratchJson -Name "cycle_${cycle}_build_private_profile" -Arguments @(
                     'build-corpus',
                     '--profile', 'scratch-private-extended-v1',
-                    '--reason', "passive-gutenberg-cycle-$cycle-approved-subset"
+                    '--reason', "passive-wikisource-cycle-$cycle-approved-subset"
                 ) | Out-Null
                 Invoke-ScratchJson -Name "cycle_${cycle}_verify_core_profile" -Arguments @(
                     'verify-profile',
