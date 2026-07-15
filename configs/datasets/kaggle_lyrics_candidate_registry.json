@@ -1,0 +1,159 @@
+{
+  "schema_version": 1,
+  "registry_id": "kaggle-lyrics-private-candidate-registry-v1",
+  "reviewed_at": "2026-07-15",
+  "intended_partition": "private_unknown_rights",
+  "default_training_eligibility": "private_only",
+  "policy": {
+    "purpose": "Survey Kaggle lyric datasets for private/personal-use scratch-model data expansion.",
+    "clean_open_core_default": "excluded",
+    "private_research_default": "allowed_after_local_snapshot_and_hash_manifest",
+    "commercial_or_public_release_default": "blocked",
+    "reason": "Kaggle dataset licenses often describe the uploader's dataset package, but lyric text can still have an unclear underlying copyright and redistribution chain."
+  },
+  "ranking_notes": [
+    "Prioritize high row count, direct lyric text, English or language metadata, and simple tabular formats.",
+    "Treat scraped Genius, Spotify, AZLyrics, and generic lyric-site sources as private-only unless item-level rights are later proven.",
+    "Preserve Kaggle slug, Kaggle license label, source claims, file manifests, hashes, row counts, language fields, and any explicit scraper/source notes."
+  ],
+  "candidates": [
+    {
+      "rank": 1,
+      "kaggle_ref": "d3stron/english-music-lyrics-5-genres-500k",
+      "name": "English Music Lyrics 5 Genres (500k)",
+      "url": "https://www.kaggle.com/datasets/d3stron/english-music-lyrics-5-genres-500k",
+      "observed_kaggle_license": "MIT",
+      "observed_size_or_count": "about 500k English lyric records",
+      "observed_source_notes": "Kaggle listing describes lyrics text with genre labels.",
+      "private_use_priority": "high",
+      "clean_core_eligibility": "blocked_without_underlying_rights_review",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "underlying lyric copyrights not proven by Kaggle license label",
+        "source provenance needs local inspection"
+      ],
+      "next_action": "Download first after Kaggle credentials are configured; inspect schema, language, duplicates, and source notes."
+    },
+    {
+      "rank": 2,
+      "kaggle_ref": "nikhilnayak123/5-million-song-lyrics-dataset",
+      "name": "5 Million Song Lyrics Dataset",
+      "url": "https://www.kaggle.com/datasets/nikhilnayak123/5-million-song-lyrics-dataset",
+      "observed_kaggle_license": "Unknown",
+      "observed_size_or_count": "5 million lyric records; listing indicates about 3 GB",
+      "observed_source_notes": "Kaggle listing references a scraper.",
+      "private_use_priority": "very_high",
+      "clean_core_eligibility": "blocked",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "unknown Kaggle license",
+        "scraped lyric source",
+        "large enough to require staged validation before full ingest"
+      ],
+      "next_action": "Download as a private-only bulk source if disk/time budget allows; sample first and dedupe against existing song_lyrics.csv."
+    },
+    {
+      "rank": 3,
+      "kaggle_ref": "carlosgdcj/genius-song-lyrics-with-language-information",
+      "name": "Genius Song Lyrics with Language Information",
+      "url": "https://www.kaggle.com/datasets/carlosgdcj/genius-song-lyrics-with-language-information",
+      "observed_kaggle_license": "Unknown",
+      "observed_size_or_count": "Derived from 5 Million Song Lyrics Dataset with language labels",
+      "observed_source_notes": "Builds on the 5M lyrics dataset and adds language detection.",
+      "private_use_priority": "high",
+      "clean_core_eligibility": "blocked",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "unknown Kaggle license",
+        "derived from scraped/unknown-license source",
+        "language labels are useful but inherited rights risk remains"
+      ],
+      "next_action": "Use if language filtering is worth more than maximum raw volume."
+    },
+    {
+      "rank": 4,
+      "kaggle_ref": "deepshah16/song-lyrics-dataset",
+      "name": "Song Lyrics Dataset",
+      "url": "https://www.kaggle.com/datasets/deepshah16/song-lyrics-dataset",
+      "observed_kaggle_license": "CC0: Public Domain",
+      "observed_size_or_count": "Kaggle listing says lyrics of various artists",
+      "observed_source_notes": "Source provenance not established from search/listing snippets.",
+      "private_use_priority": "medium_high",
+      "clean_core_eligibility": "blocked_without_underlying_rights_review",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "CC0 label may not establish rights to underlying copyrighted lyrics",
+        "needs file/source inspection"
+      ],
+      "next_action": "Download and inspect as a small/medium private source; do not promote to clean core from CC0 label alone."
+    },
+    {
+      "rank": 5,
+      "kaggle_ref": "evabot/spotify-lyrics-dataset",
+      "name": "Spotify Lyrics Dataset",
+      "url": "https://www.kaggle.com/datasets/evabot/spotify-lyrics-dataset",
+      "observed_kaggle_license": "CC0: Public Domain",
+      "observed_size_or_count": "Listing mentions 10k and planned 100k lyric records",
+      "observed_source_notes": "Listing says lyrics were crawled from Spotify tracks and lyric web pages.",
+      "private_use_priority": "medium",
+      "clean_core_eligibility": "blocked",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "crawled from Spotify/lyrics web pages",
+        "CC0 package label does not resolve lyric rights"
+      ],
+      "next_action": "Lower priority than 500k/5M sources; useful for metadata shape experiments."
+    },
+    {
+      "rank": 6,
+      "kaggle_ref": "eitanbentora/chords-and-lyrics-dataset",
+      "name": "Chords and Lyrics Dataset",
+      "url": "https://www.kaggle.com/datasets/eitanbentora/chords-and-lyrics-dataset",
+      "observed_kaggle_license": "not confirmed in survey",
+      "observed_size_or_count": "134,256 songs with chords and lyrics",
+      "observed_source_notes": "Includes lyrics/chords and artist metadata.",
+      "private_use_priority": "medium",
+      "clean_core_eligibility": "blocked_without_underlying_rights_review",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "chord/lyric site provenance likely needs inspection",
+        "format may require chord stripping before lyric training"
+      ],
+      "next_action": "Use after bulk lyric datasets if chord-aware structure becomes useful."
+    },
+    {
+      "rank": 7,
+      "kaggle_ref": "imuhammad/audio-features-and-lyrics-of-spotify-songs",
+      "name": "Audio features and lyrics of Spotify songs",
+      "url": "https://www.kaggle.com/datasets/imuhammad/audio-features-and-lyrics-of-spotify-songs",
+      "observed_kaggle_license": "not confirmed in survey",
+      "observed_size_or_count": "Spotify/audio metadata plus lyrics",
+      "observed_source_notes": "Listing says lyrics were added using a Genius library and language detection.",
+      "private_use_priority": "medium_low",
+      "clean_core_eligibility": "blocked",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "Genius-derived lyrics",
+        "smaller/metadata-oriented relative to bulk lyric sources"
+      ],
+      "next_action": "Use for metadata-feature experiments, not primary token volume."
+    },
+    {
+      "rank": 8,
+      "kaggle_ref": "edenbd/150k-lyrics-labeled-with-spotify-valence",
+      "name": "150K Lyrics Labeled with Spotify Valence",
+      "url": "https://www.kaggle.com/datasets/edenbd/150k-lyrics-labeled-with-spotify-valence",
+      "observed_kaggle_license": "CC BY-SA 4.0",
+      "observed_size_or_count": "150k lyric records with valence labels",
+      "observed_source_notes": "Mood/valence-oriented lyric dataset.",
+      "private_use_priority": "medium_low",
+      "clean_core_eligibility": "blocked_without_underlying_rights_review",
+      "recommended_partition": "private_unknown_rights",
+      "risk_flags": [
+        "share-alike package license does not prove lyric redistribution rights",
+        "labels may be useful for conditioning but not bulk scale"
+      ],
+      "next_action": "Consider later for control tags or preference/eval metadata."
+    }
+  ]
+}
