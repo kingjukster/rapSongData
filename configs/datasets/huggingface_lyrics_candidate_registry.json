@@ -166,6 +166,35 @@
       "nonempty_lyrics": 15124,
       "approx_tokens": 10919493,
       "next_action": "Hip-hop private normalization candidate."
+    },
+    {
+      "hf_dataset": "amishshah/song_lyrics",
+      "source_id": "hf_private_lyrics_amishshah__song_lyrics",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/amishshah__song_lyrics/20260715_hf_public_snapshot",
+      "status": "raw_manifested",
+      "license_tags": [],
+      "row_count": 3374198,
+      "nonempty_lyrics": 3374198,
+      "approx_tokens": 1378677280,
+      "next_action": "Large private normalizer target; likely overlaps Genius/Kaggle sources, so exact-dedupe first."
+    },
+    {
+      "hf_dataset": "asigalov61/Lyrics-MIDI-Dataset",
+      "source_id": "hf_private_lyrics_asigalov61__lyrics_midi_dataset",
+      "snapshot": "data/corpus_lake/raw/huggingface_lyrics/asigalov61__Lyrics-MIDI-Dataset/20260715_hf_public_snapshot",
+      "status": "raw_manifested_selected_artifacts",
+      "license_tags": [
+        "license:cc-by-nc-sa-4.0"
+      ],
+      "downloaded_artifacts": [
+        "Lyrics-MIDI-Genius-Cleaned-Subset-CC-BY-NC-SA.zip",
+        "Lyrics_MIDI_Dataset_Processed_Corpus_CC_BY_NC_SA.pickle",
+        "README.md"
+      ],
+      "row_count": 0,
+      "nonempty_lyrics": 0,
+      "approx_tokens": 0,
+      "next_action": "Extract the cleaned subset zip or processed corpus only if MIDI/lyric alignment becomes useful."
     }
   ],
   "deferred_large_candidates": [
@@ -173,16 +202,6 @@
       "hf_dataset": "Dr3dre/Genius-song-lyrics-cleaned",
       "approx_file_bytes": 18426890117,
       "reason": "Large likely-overlapping cleaned Genius mirror; pull after first HF batch is committed or as a background job."
-    },
-    {
-      "hf_dataset": "amishshah/song_lyrics",
-      "approx_file_bytes": 5663409247,
-      "reason": "Large CSV; likely valuable but should be pulled with D: Hugging Face cache configured."
-    },
-    {
-      "hf_dataset": "asigalov61/Lyrics-MIDI-Dataset",
-      "approx_file_bytes": 13181497573,
-      "reason": "Contains MIDI/model artifacts; pull only selected lyric/corpus artifacts, not model files."
     }
   ]
 }

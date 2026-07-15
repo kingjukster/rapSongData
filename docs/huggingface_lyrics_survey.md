@@ -14,7 +14,7 @@ Public Hugging Face pulls are stored under:
 data/corpus_lake/raw/huggingface_lyrics/<namespace>__<repo>/20260715_hf_public_snapshot
 ```
 
-The first public batch downloaded and raw-manifested 13 datasets:
+The first public batches downloaded and raw-manifested 15 datasets/artifact sets:
 
 | Hugging Face dataset | Local source id | Rows/docs | Nonempty lyrics/docs | Rough tokens | Status |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -31,18 +31,20 @@ The first public batch downloaded and raw-manifested 13 datasets:
 | `theelderemo/lyrics-database` | `hf_private_lyrics_theelderemo__lyrics_database` | 49,985 | 49,985 | 15.9M | raw-manifested |
 | `smgriffin/modern-pop-lyrics` | `hf_private_lyrics_smgriffin__modern_pop_lyrics` | 17,174 | 17,174 | 6.6M | raw-manifested |
 | `theodoredc/hiphop-lyrics` | `hf_private_lyrics_theodoredc__hiphop_lyrics` | 15,124 | 15,124 | 10.9M | raw-manifested |
+| `amishshah/song_lyrics` | `hf_private_lyrics_amishshah__song_lyrics` | 3,374,198 | 3,374,198 | 1,378.7M | raw-manifested |
+| `asigalov61/Lyrics-MIDI-Dataset` | `hf_private_lyrics_asigalov61__lyrics_midi_dataset` | selected binary/zip artifacts | not counted yet | not counted yet | raw-manifested selected artifacts |
 
-Batch total before dedupe:
+Batch total before dedupe, excluding unextracted Asigalov binary/zip artifacts:
 
-- 4,590,818 rows/docs
-- 4,590,782 nonempty lyrics/docs
-- about 1.64B rough tokens
+- 7,965,016 rows/docs
+- 7,964,980 nonempty lyrics/docs
+- about 3.02B rough tokens
 
 ## Deferred large candidates
 
 - `Dr3dre/Genius-song-lyrics-cleaned`: about 18.4 GB of Parquet; likely overlaps the cleaned Genius/Kaggle sources.
-- `amishshah/song_lyrics`: about 5.7 GB CSV; likely valuable but should be pulled with the Hugging Face cache pinned to D:.
-- `asigalov61/Lyrics-MIDI-Dataset`: about 13.2 GB total, including MIDI/model artifacts. Pull selected lyric/corpus files only.
+- `amishshah/song_lyrics`: pulled and raw-manifested with D:-pinned cache, then duplicate cache removed.
+- `asigalov61/Lyrics-MIDI-Dataset`: selected lyric/corpus artifacts pulled; model files skipped.
 
 ## Recommended next step
 
