@@ -51,11 +51,34 @@ function Invoke-ScratchJson {
     param([string[]]$Arguments, [string]$Name)
     Write-LoopEvent -Event 'command_started' -Data @{ name = $Name; arguments = $Arguments }
     $started = Get-Date
-    $output = & $Runner @Arguments 2>&1
-    $exitCode = $LASTEXITCODE
+    $process = [System.Diagnostics.Process]::new()
+    $process.StartInfo.FileName = 'powershell.exe'
+    $process.StartInfo.WorkingDirectory = $RepoRoot
+    $process.StartInfo.UseShellExecute = $false
+    $process.StartInfo.RedirectStandardOutput = $true
+    $process.StartInfo.RedirectStandardError = $true
+    $process.StartInfo.CreateNoWindow = $true
+    $process.StartInfo.ArgumentList.Add('-NoProfile')
+    $process.StartInfo.ArgumentList.Add('-ExecutionPolicy')
+    $process.StartInfo.ArgumentList.Add('Bypass')
+    $process.StartInfo.ArgumentList.Add('-File')
+    $process.StartInfo.ArgumentList.Add($Runner)
+    foreach ($argument in $Arguments) {
+        $process.StartInfo.ArgumentList.Add($argument)
+    }
+    [void]$process.Start()
+    $stdout = $process.StandardOutput.ReadToEnd()
+    $stderr = $process.StandardError.ReadToEnd()
+    $process.WaitForExit()
+    $exitCode = $process.ExitCode
     $duration = [math]::Round(((Get-Date) - $started).TotalSeconds, 3)
     $stdoutPath = Join-Path $RunDir ("{0:yyyyMMdd_HHmmss}_{1}.log" -f (Get-Date), $Name)
-    $output | Set-Content -LiteralPath $stdoutPath -Encoding UTF8
+    @(
+        '--- stdout ---'
+        $stdout
+        '--- stderr ---'
+        $stderr
+    ) | Set-Content -LiteralPath $stdoutPath -Encoding UTF8
     if ($exitCode -ne 0) {
         Write-LoopEvent -Event 'command_failed' -Data @{
             name = $Name
@@ -65,11 +88,12 @@ function Invoke-ScratchJson {
         }
         throw "$Name failed with exit code $exitCode"
     }
-    $json = Convert-CommandOutputToJson -Output $output
+    $json = Convert-CommandOutputToJson -Output @($stdout)
     Write-LoopEvent -Event 'command_completed' -Data @{
         name = $Name
         wall_seconds = $duration
         stdout_path = $stdoutPath
+        stderr_bytes = $stderr.Length
     }
     return $json
 }
