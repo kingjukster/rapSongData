@@ -5,7 +5,8 @@ song-level sources, normalizes lyric text into a stable fingerprint, writes one
 canonical admitted record per unique lyric, and records duplicate/source stats.
 
 The first preset intentionally targets the large Genius-family mirrors because
-they are high-value and highly overlapping.
+they are high-value and highly overlapping. Follow-on presets can seed from a
+previous admitted parquet so each run only admits genuinely new lyrics.
 """
 
 from __future__ import annotations
@@ -100,6 +101,222 @@ GENIUS_FAMILY_SOURCES = (
     ),
 )
 
+REMAINING_LOCAL_SOURCES = (
+    SourceSpec(
+        source_id="hf_pjmixers_bigdata_pw_lyrics1m_en",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/PJMixers-Dev__bigdata-pw_Lyrics1M-en/20260715_hf_public_snapshot/train.json"),
+        format="json_array",
+        lyric_columns=("text", "lyrics"),
+    ),
+    SourceSpec(
+        source_id="hf_howitzer_multilingual_lyrics_genre",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/HowitzerDeBoullion__Multi-Lingual-Lyrics-for-Genre-Classification/20260715_hf_public_snapshot/data"),
+        format="parquet_dir",
+        lyric_columns=("Lyrics", "lyrics"),
+        title_columns=("Song", "title"),
+        artist_columns=("Artist", "artist"),
+        genre_columns=("Genre", "genre"),
+        language_columns=("Language", "language"),
+        include_glob="*.parquet",
+    ),
+    SourceSpec(
+        source_id="hf_halaction_song_lyrics",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/halaction__song-lyrics/20260715_hf_public_snapshot"),
+        format="csv_dir",
+        lyric_columns=("lyrics",),
+        include_glob="*.csv",
+    ),
+    SourceSpec(
+        source_id="hf_nateraw_rap_lyrics_v1",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/nateraw__rap-lyrics-v1/20260715_hf_public_snapshot/data"),
+        format="parquet_dir",
+        lyric_columns=("lyrics",),
+        include_glob="*.parquet",
+    ),
+    SourceSpec(
+        source_id="hf_nateraw_rap_lyrics_v2",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/nateraw__rap-lyrics-v2/20260715_hf_public_snapshot/data"),
+        format="parquet_dir",
+        lyric_columns=("completion", "text"),
+        include_glob="*.parquet",
+    ),
+    SourceSpec(
+        source_id="hf_smgriffin_modern_pop_lyrics",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/smgriffin__modern-pop-lyrics/20260715_hf_public_snapshot/modern_pop_lyrics.csv"),
+        format="csv",
+        lyric_columns=("lyrics",),
+    ),
+    SourceSpec(
+        source_id="hf_theelderemo_lyrics_database",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/theelderemo__lyrics-database/20260715_hf_public_snapshot/song-lyrics.csv"),
+        format="csv",
+        lyric_columns=("lyrics",),
+        artist_columns=("artist_name", "artist"),
+        genre_columns=("genres_list", "genre"),
+    ),
+    SourceSpec(
+        source_id="hf_theodoredc_hiphop_lyrics",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/theodoredc__hiphop-lyrics/20260715_hf_public_snapshot/data"),
+        format="parquet_dir",
+        lyric_columns=("Lyrics", "lyrics"),
+        title_columns=("Title", "title"),
+        artist_columns=("Artist", "artist"),
+        include_glob="*.parquet",
+    ),
+    SourceSpec(
+        source_id="hf_vancenceho_spotify_lyrics",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/vancenceho__spotify-lyrics/20260715_hf_public_snapshot/spotify_millsongdata.csv"),
+        format="csv",
+        lyric_columns=("text", "lyrics"),
+    ),
+    SourceSpec(
+        source_id="hf_vancenceho_spotify_lyrics_clean",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/vancenceho__spotify-lyrics-clean/20260715_hf_public_snapshot/lyrics_cleaned.csv"),
+        format="csv",
+        lyric_columns=("lyrics", "text"),
+    ),
+    SourceSpec(
+        source_id="hf_cropinky_rap_lyrics_english_text_files",
+        source_family="huggingface",
+        path=Path("data/corpus_lake/raw/huggingface_lyrics/Cropinky__rap_lyrics_english/20260715_hf_public_snapshot/songs"),
+        format="text_dir",
+        lyric_columns=("lyrics",),
+        include_glob="*.txt",
+    ),
+    SourceSpec(
+        source_id="kaggle_bwandowando_spotify_attributes_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/bwandowando__spotify-songs-with-attributes-and-lyrics/20260715_credentialed_download/songs_with_attributes_and_lyrics.csv"),
+        format="csv",
+        lyric_columns=("lyrics",),
+        title_columns=("name", "title"),
+        artist_columns=("artists", "artist"),
+    ),
+    SourceSpec(
+        source_id="kaggle_d3stron_english_5_genres",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/d3stron__english-music-lyrics-5-genres-500k/20260715_credentialed_download"),
+        format="csv_dir",
+        lyric_columns=("Lyric", "lyrics"),
+        genre_columns=("genre", "Genre"),
+        include_glob="cleaned_*_lyrics.csv",
+    ),
+    SourceSpec(
+        source_id="kaggle_deepshah_artist_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/deepshah16__song-lyrics-dataset/20260715_credentialed_download/csv"),
+        format="csv_dir",
+        lyric_columns=("Lyric", "lyrics"),
+        title_columns=("Title", "title"),
+        artist_columns=("Artist", "artist"),
+        include_glob="*.csv",
+    ),
+    SourceSpec(
+        source_id="kaggle_devdope_900k_spotify",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/devdope__900k-spotify/20260715_credentialed_download/spotify_dataset.csv"),
+        format="csv",
+        lyric_columns=("text", "lyrics"),
+        title_columns=("song", "title"),
+        artist_columns=("Artist(s)", "artist"),
+        genre_columns=("Genre", "genre"),
+        year_columns=("Release Date", "year"),
+    ),
+    SourceSpec(
+        source_id="kaggle_edenbd_valence_labeled_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/edenbd__150k-lyrics-labeled-with-spotify-valence/20260715_credentialed_download/labeled_lyrics_cleaned.csv"),
+        format="csv",
+        lyric_columns=("seq", "lyrics"),
+    ),
+    SourceSpec(
+        source_id="kaggle_eitanbentora_chords_and_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/eitanbentora__chords-and-lyrics-dataset/20260715_credentialed_download/chords_and_lyrics.csv"),
+        format="csv",
+        lyric_columns=("lyrics", "chords&lyrics"),
+        title_columns=("song_name", "title"),
+        artist_columns=("artist_name", "artist"),
+        genre_columns=("genres", "genre"),
+        language_columns=("lang", "language"),
+    ),
+    SourceSpec(
+        source_id="kaggle_evabot_spotify_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/evabot__spotify-lyrics-dataset/20260715_credentialed_download/lyrics_10k.csv"),
+        format="csv",
+        lyric_columns=("lyrics",),
+        artist_columns=("artists", "artist"),
+        genre_columns=("genres", "genre"),
+    ),
+    SourceSpec(
+        source_id="kaggle_imuhammad_spotify_songs",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/imuhammad__audio-features-and-lyrics-of-spotify-songs/20260715_credentialed_download/spotify_songs.csv"),
+        format="csv",
+        lyric_columns=("lyrics",),
+        title_columns=("track_name", "title"),
+        artist_columns=("track_artist", "artist"),
+        genre_columns=("playlist_genre", "playlist_subgenre", "genre"),
+    ),
+    SourceSpec(
+        source_id="kaggle_juicobowley_drake_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/juicobowley__drake-lyrics/20260715_credentialed_download/drake_data.csv"),
+        format="csv",
+        lyric_columns=("lyrics",),
+        title_columns=("lyrics_title", "title"),
+    ),
+    SourceSpec(
+        source_id="kaggle_neisse_6_genres_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/neisse__scrapped-lyrics-from-6-genres/20260715_credentialed_download/lyrics-data.csv"),
+        format="csv",
+        lyric_columns=("Lyric", "lyrics"),
+        title_columns=("SName", "title"),
+    ),
+    SourceSpec(
+        source_id="kaggle_notshrirang_spotify_million_song",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/notshrirang__spotify-million-song-dataset/20260715_credentialed_download/spotify_millsongdata.csv"),
+        format="csv",
+        lyric_columns=("text", "lyrics"),
+    ),
+    SourceSpec(
+        source_id="kaggle_promptcloud_taylor_swift_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/promptcloudhq__taylor-swift-song-lyrics-from-all-the-albums/20260715_credentialed_download/taylor_swift_lyrics.csv"),
+        format="csv",
+        lyric_columns=("lyric", "lyrics", "line"),
+        title_columns=("track_title", "song", "title"),
+    ),
+    SourceSpec(
+        source_id="kaggle_suraj520_music_dataset_lyrics",
+        source_family="kaggle",
+        path=Path("data/corpus_lake/raw/kaggle_private_lyrics/suraj520__music-dataset-song-information-and-lyrics/20260715_credentialed_download/songs.csv"),
+        format="csv",
+        lyric_columns=("Lyrics", "lyrics"),
+        title_columns=("Name", "title"),
+        artist_columns=("Artist", "artist"),
+    ),
+)
+
+PRESETS = {
+    "genius_family": GENIUS_FAMILY_SOURCES,
+    "remaining_local_downloaded": REMAINING_LOCAL_SOURCES,
+    "all_local_downloaded": GENIUS_FAMILY_SOURCES + REMAINING_LOCAL_SOURCES,
+}
+
 ADMITTED_SCHEMA = pa.schema(
     [
         ("record_id", pa.string()),
@@ -190,6 +407,30 @@ def iter_source_rows(spec: SourceSpec, chunksize: int) -> Iterator[tuple[str, in
                 row_offset += 1
         return
 
+    if spec.format == "csv_dir":
+        files = sorted(spec.path.glob(spec.include_glob or "*.csv"))
+        if not files:
+            raise FileNotFoundError(f"No CSV files found under {spec.path}")
+        for file_path in files:
+            row_offset = 0
+            for chunk in pd.read_csv(file_path, chunksize=chunksize, encoding_errors="replace", low_memory=False):
+                for row in chunk.to_dict("records"):
+                    yield str(file_path), row_offset, row
+                    row_offset += 1
+        return
+
+    if spec.format == "parquet":
+        if not spec.path.exists():
+            raise FileNotFoundError(spec.path)
+        parquet = pq.ParquetFile(spec.path)
+        row_offset = 0
+        for batch in parquet.iter_batches(batch_size=chunksize):
+            table = pa.Table.from_batches([batch])
+            for row in table.to_pylist():
+                yield str(spec.path), row_offset, row
+                row_offset += 1
+        return
+
     if spec.format == "parquet_dir":
         files = sorted(spec.path.glob(spec.include_glob or "*.parquet"))
         if not files:
@@ -202,6 +443,33 @@ def iter_source_rows(spec: SourceSpec, chunksize: int) -> Iterator[tuple[str, in
                 for row in table.to_pylist():
                     yield str(file_path), row_offset, row
                     row_offset += 1
+        return
+
+    if spec.format == "json_array":
+        if not spec.path.exists():
+            raise FileNotFoundError(spec.path)
+        # The local JSON snapshots are ordinary arrays. Loading one at a time is
+        # acceptable on this workstation and avoids adding another dependency.
+        with spec.path.open("r", encoding="utf-8", errors="replace") as handle:
+            rows = json.load(handle)
+        if not isinstance(rows, list):
+            raise ValueError(f"Expected JSON array for {spec.path}")
+        for row_offset, row in enumerate(rows):
+            if isinstance(row, dict):
+                yield str(spec.path), row_offset, row
+        return
+
+    if spec.format == "text_dir":
+        files = sorted(path for path in spec.path.rglob(spec.include_glob or "*.txt") if path.is_file())
+        if not files:
+            raise FileNotFoundError(f"No text files found under {spec.path}")
+        for row_offset, file_path in enumerate(files):
+            text = file_path.read_text(encoding="utf-8", errors="replace")
+            yield str(file_path), row_offset, {
+                "title": file_path.stem,
+                "artist": file_path.stem,
+                "lyrics": text,
+            }
         return
 
     raise ValueError(f"Unsupported source format for {spec.source_id}: {spec.format}")
@@ -271,6 +539,54 @@ def init_db(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def seed_hashes_from_parquet(
+    *,
+    parquet_path: Path,
+    conn: sqlite3.Connection | None,
+    seen_hashes: dict[str, tuple[str, str]],
+    batch_size: int,
+) -> int:
+    if not parquet_path.exists():
+        raise FileNotFoundError(parquet_path)
+    parquet = pq.ParquetFile(parquet_path)
+    loaded = 0
+    next_report = max(batch_size, 250_000)
+    required_columns = ["normalized_hash", "record_id", "source_id"]
+    for batch in parquet.iter_batches(batch_size=batch_size, columns=required_columns):
+        table = pa.Table.from_batches([batch])
+        rows = table.to_pylist()
+        if conn is not None:
+            conn.executemany(
+                """
+                INSERT OR IGNORE INTO lyric_hashes
+                (normalized_hash, record_id, source_id, source_path, source_row)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    (
+                        row["normalized_hash"],
+                        row["record_id"],
+                        row["source_id"],
+                        str(parquet_path),
+                        -1,
+                    )
+                    for row in rows
+                    if row.get("normalized_hash")
+                ),
+            )
+            conn.commit()
+        else:
+            for row in rows:
+                normalized_hash = row.get("normalized_hash")
+                if normalized_hash and normalized_hash not in seen_hashes:
+                    seen_hashes[normalized_hash] = (row.get("record_id") or "", row.get("source_id") or "seed")
+        loaded += len(rows)
+        if loaded >= next_report:
+            print(f"[dedupe] seed_progress path={parquet_path} loaded_rows={loaded}", flush=True)
+            next_report += max(batch_size, 250_000)
+    return loaded
+
+
 def write_report(output_dir: Path, summary: dict[str, Any]) -> None:
     lines = [
         "# Private lyrics exact dedupe report",
@@ -280,6 +596,7 @@ def write_report(output_dir: Path, summary: dict[str, Any]) -> None:
         "",
         "## Totals",
         "",
+        f"- Seed records loaded: {summary.get('seed_records_loaded', 0):,}",
         f"- Input rows scanned: {summary['input_rows_scanned']:,}",
         f"- Empty/invalid lyric rows: {summary['empty_lyrics']:,}",
         f"- Unique admitted records: {summary['unique_records']:,}",
@@ -311,7 +628,7 @@ def write_report(output_dir: Path, summary: dict[str, Any]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--preset", choices=["genius_family"], default="genius_family")
+    parser.add_argument("--preset", choices=sorted(PRESETS), default="genius_family")
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--snapshot-id", default=DEFAULT_SNAPSHOT_ID)
     parser.add_argument("--chunksize", type=int, default=50_000)
@@ -325,6 +642,13 @@ def parse_args() -> argparse.Namespace:
         help="Source id to skip for this run; repeatable. Useful for known source-level duplicate mirrors.",
     )
     parser.add_argument(
+        "--seed-admitted-parquet",
+        action="append",
+        type=Path,
+        default=[],
+        help="Existing admitted_unique.parquet to load into the dedupe index before scanning new sources; repeatable.",
+    )
+    parser.add_argument(
         "--index-backend",
         choices=["memory", "sqlite"],
         default="memory",
@@ -334,13 +658,21 @@ def parse_args() -> argparse.Namespace:
 
 
 def jsonable_args(args: argparse.Namespace) -> dict[str, Any]:
-    return {key: str(value) if isinstance(value, Path) else value for key, value in vars(args).items()}
+    result: dict[str, Any] = {}
+    for key, value in vars(args).items():
+        if isinstance(value, Path):
+            result[key] = str(value)
+        elif isinstance(value, list):
+            result[key] = [str(item) if isinstance(item, Path) else item for item in value]
+        else:
+            result[key] = value
+    return result
 
 
 def main() -> int:
     args = parse_args()
     excluded_sources = set(args.exclude_source or [])
-    sources = tuple(spec for spec in GENIUS_FAMILY_SOURCES if spec.source_id not in excluded_sources)
+    sources = tuple(spec for spec in PRESETS[args.preset] if spec.source_id not in excluded_sources)
     output_dir = args.output_root / args.snapshot_id
     output_dir.mkdir(parents=True, exist_ok=True)
     db_path = output_dir / "dedupe_index.sqlite"
@@ -365,6 +697,16 @@ def main() -> int:
     start = time.time()
     conn = init_db(db_path) if args.index_backend == "sqlite" else None
     seen_hashes: dict[str, tuple[str, str]] = {}
+    seed_records_loaded = 0
+    for seed_path in args.seed_admitted_parquet or []:
+        print(f"[dedupe] seed_started path={seed_path}", flush=True)
+        seed_records_loaded += seed_hashes_from_parquet(
+            parquet_path=seed_path,
+            conn=conn,
+            seen_hashes=seen_hashes,
+            batch_size=max(1, args.chunksize),
+        )
+        print(f"[dedupe] seed_completed path={seed_path} cumulative_seed_records={seed_records_loaded}", flush=True)
     duplicate_csv = duplicate_csv_path.open("w", encoding="utf-8", newline="")
     duplicate_writer = csv.DictWriter(
         duplicate_csv,
@@ -503,6 +845,8 @@ def main() -> int:
         "rights_partition": "private_unknown_rights",
         "dedupe_method": "exact_sha256_over_nfkc_lower_alnum_apostrophe_fingerprint",
         "index_backend": args.index_backend,
+        "seed_admitted_parquet": [str(path) for path in args.seed_admitted_parquet or []],
+        "seed_records_loaded": int(seed_records_loaded),
         "input_rows_scanned": int(total_scanned),
         "empty_lyrics": int(total_empty),
         "unique_records": int(total_unique),
