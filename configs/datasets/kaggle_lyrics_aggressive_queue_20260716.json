@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "queue_id": "kaggle-lyrics-aggressive-queue-20260716",
+  "created_at_utc": "2026-07-16T03:35:00Z",
+  "intended_partition": "private_unknown_rights",
+  "default_training_eligibility": "private_only",
+  "policy_note": "Private/personal-use acquisition. Preserve raw files and manifests; exact-dedupe before training admission.",
+  "refs": [
+    "albertsuarez/azlyrics",
+    "serkantysz/550k-spotify-songs-audio-lyrics-and-genres",
+    "karnikakapoor/lyrics",
+    "pratiksaha198/lyrics-generation",
+    "aditya2803/eminem-lyrics",
+    "darkrubiks/nirvana-lyrics",
+    "brianblakely/top-100-songs-and-lyrics-from-1959-to-2019",
+    "kailic/bts-lyrics",
+    "shakirulhasan/bangla-song-lyrics",
+    "joaorobson/pink-floyd-lyrics",
+    "mcarujo/bossa-nova-lyrics",
+    "lbalter/hamilton-lyrics",
+    "b14ucky/taco-hemingway-lyrics",
+    "jcacperalta/twice-korean-singles-lines"
+  ]
+}

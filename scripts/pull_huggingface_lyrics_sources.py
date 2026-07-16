@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import time
 from pathlib import Path
 
-from huggingface_hub import HfApi, hf_hub_download
+import requests
+from huggingface_hub import HfApi, hf_hub_download, hf_hub_url
 
 
 DEFAULT_SNAPSHOT_ID = "20260715_hf_public_snapshot"
@@ -14,6 +16,43 @@ DEFAULT_SNAPSHOT_ID = "20260715_hf_public_snapshot"
 
 def source_id_for(repo_id: str) -> str:
     return "hf_private_lyrics_" + repo_id.lower().replace("/", "__").replace("-", "_").replace(".", "_")
+
+
+def direct_download(repo_id: str, filename: str, dest: Path) -> None:
+    """Stream a public dataset file directly to dest with simple resume support."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    partial = dest.with_suffix(dest.suffix + ".part")
+    headers: dict[str, str] = {}
+    token = os.environ.get("HF_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    existing = partial.stat().st_size if partial.exists() else 0
+    mode = "ab" if existing else "wb"
+    if existing:
+        headers["Range"] = f"bytes={existing}-"
+    url = hf_hub_url(repo_id=repo_id, filename=filename, repo_type="dataset")
+    with requests.get(url, headers=headers, stream=True, timeout=60) as response:
+        if existing and response.status_code == 416:
+            partial.replace(dest)
+            return
+        if existing and response.status_code != 206:
+            existing = 0
+            mode = "wb"
+            headers.pop("Range", None)
+            response.close()
+            with requests.get(url, headers=headers, stream=True, timeout=60) as retry:
+                retry.raise_for_status()
+                with partial.open(mode) as handle:
+                    for chunk in retry.iter_content(chunk_size=1024 * 1024):
+                        if chunk:
+                            handle.write(chunk)
+        else:
+            response.raise_for_status()
+            with partial.open(mode) as handle:
+                for chunk in response.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        handle.write(chunk)
+    partial.replace(dest)
 
 
 def main() -> None:
@@ -24,6 +63,11 @@ def main() -> None:
     parser.add_argument("--cache-dir", type=Path, default=Path("data/corpus_lake/cache/huggingface_hub"))
     parser.add_argument("--allow", action="append", default=[], help="Optional filename substring allow-list; can repeat.")
     parser.add_argument("--skip-model-artifacts", action="store_true", default=True)
+    parser.add_argument(
+        "--direct-download",
+        action="store_true",
+        help="Stream files directly to the raw snapshot instead of first populating the HF cache.",
+    )
     args = parser.parse_args()
 
     api = HfApi()
@@ -54,17 +98,22 @@ def main() -> None:
                 skipped.append({"file": name, "reason": "model_or_embedding_artifact"})
                 continue
             try:
-                cached = hf_hub_download(
-                    repo_id=repo_id,
-                    repo_type="dataset",
-                    filename=name,
-                    cache_dir=args.cache_dir,
-                )
-                cached_path = Path(cached)
                 dest = out_dir / name
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                if not dest.exists() or dest.stat().st_size != cached_path.stat().st_size:
-                    shutil.copy2(cached_path, dest)
+                if args.direct_download:
+                    expected_size = getattr(sibling, "size", None)
+                    if not dest.exists() or (expected_size and dest.stat().st_size != expected_size):
+                        direct_download(repo_id, name, dest)
+                else:
+                    cached = hf_hub_download(
+                        repo_id=repo_id,
+                        repo_type="dataset",
+                        filename=name,
+                        cache_dir=args.cache_dir,
+                    )
+                    cached_path = Path(cached)
+                    dest.parent.mkdir(parents=True, exist_ok=True)
+                    if not dest.exists() or dest.stat().st_size != cached_path.stat().st_size:
+                        shutil.copy2(cached_path, dest)
                 downloaded.append(
                     {
                         "path": str(dest.as_posix()),
