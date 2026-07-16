@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "queue_id": "huggingface-lyrics-followup-overflow-private-20260716",
+  "purpose": "Follow-up Hugging Face lyric-source acquisition launched after D: approached the 60GB storage guardrail.",
+  "rights_partition": "private_unknown_rights",
+  "rights_note": "Hub dataset licenses may describe the package, but underlying lyric rights remain unverified. Keep private/personal-use only unless item-level rights are later verified.",
+  "storage_note": "Store this follow-up run under C:\\Users\\kingj\\rapSongData_overflow_review\\huggingface_lyrics because D: had roughly 67GB free at launch and additional large pulls could push it below the 60GB guardrail.",
+  "selection_notes": [
+    "Selected from live Hugging Face search for parquet lyric datasets not already present in the local raw HF lyric lake.",
+    "The source is text/parquet lyric data, so it is more directly useful than metadata-only collections.",
+    "Keep it separate from the earlier D: Hugging Face queues so overflow review and later migration are straightforward."
+  ],
+  "repos": [
+    "asigalov61/clean-songs-lyrics-dataset"
+  ]
+}

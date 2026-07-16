@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "queue_id": "huggingface-lyrics-overnight-private-20260716",
+  "purpose": "Additional overnight Hugging Face lyric-source acquisition for private/personal-use corpus expansion.",
+  "rights_partition": "private_unknown_rights",
+  "rights_note": "Hub dataset licenses may describe the package, but underlying lyric rights remain unverified. Keep private/personal-use only unless item-level rights are later verified.",
+  "selection_notes": [
+    "Selected from live Hugging Face dataset search for text/tabular lyric datasets not already present in the local raw HF lyric lake.",
+    "Skipped obvious audio-heavy repositories to avoid non-lyric storage bloat.",
+    "Most candidates are small/medium; the main high-yield overnight source remains LRCLIB."
+  ],
+  "repos": [
+    "BhavyaMuni/artist-lyrics",
+    "ChristophSchuhmann/lyrics-index",
+    "Annanay/aml_song_lyrics_balanced",
+    "juliensimon/autonlp-data-song-lyrics",
+    "chloeliu/lyrics",
+    "drelhaj/Tarab",
+    "nbsullivan/song_lyrics",
+    "Santarabantoosoo/hf_song_lyrics_with_names",
+    "Santarabantoosoo/small_lyrics_dataset",
+    "amzar1303/lyrics"
+  ]
+}

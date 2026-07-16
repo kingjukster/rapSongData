@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "queue_id": "kaggle-lyrics-overnight-private-20260716",
+  "purpose": "Additional overnight Kaggle lyric-source acquisition for private/personal-use corpus expansion.",
+  "rights_partition": "private_unknown_rights",
+  "rights_note": "Kaggle package licenses do not prove underlying lyric rights. Keep private/personal-use only unless item-level rights are later verified.",
+  "selection_notes": [
+    "Selected from live Kaggle search for lyric-heavy or rap-relevant datasets not already present in the local raw Kaggle lake.",
+    "Avoided generic Spotify chart/audio-only datasets unless the title strongly indicates lyrics.",
+    "Use scripts/download_kaggle_lyrics_queue.py so D: remains canonical and C: overflow is only used if D: free falls below the configured guardrail."
+  ],
+  "refs": [
+    "markkorvin/large-metal-lyrics-archive-228k-songs",
+    "marzenah/azlyrics-recorded-songs-with-lyrics",
+    "mateibejan/multilingual-lyrics-for-genre-classification",
+    "terminate9298/songs-lyrics",
+    "saurabhshahane/music-dataset-1950-to-2019",
+    "ceebloop/rap-lyrics-for-nlp",
+    "jamiewelsh2/rap-lyrics",
+    "rikdifos/rap-lyrics",
+    "convolutionalnn/kanye-west-lyrics-dataset",
+    "thaddeussegura/eminem-lyrics-from-all-albums",
+    "jcecheverria/bad-bunny-lyrics",
+    "emreokcular/turkish-song-lyrics",
+    "vamsipriyathamreddy/telugu-lyrics",
+    "guybarash/hebrew-songs-lyrics",
+    "stefancomanita/top-us-songs-from-1950-to-2019-w-lyrics"
+  ]
+}
