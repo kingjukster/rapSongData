@@ -20,11 +20,11 @@ The v1 default uses the existing Qwen3-14B 12-line adapter as an initial baselin
 That adapter has a 12-line training bias, so the lane must compare it with `--base-only`
 before treating it as the best flexible-length system.
 
-The adapter does not contain the base-model weights. The first run therefore requires
-either a complete Hugging Face cache or network access to resolve `Qwen/Qwen3-14B`.
-For a portable offline setup, set `model_path` in the configuration to a complete local
-snapshot and run with `--local-files-only`. Failed launches retain `run_summary.json`,
-`run_summary.md`, and `generation.log` instead of silently leaving an ambiguous run.
+The adapter does not contain the base-model weights. The default configuration points to
+the verified local snapshot at `D:/AI-Models/Qwen3-14B`, pinned to Hugging Face revision
+`40c069824f4251a91eefaf281ebe4c544efd3e18`, and loads it offline. If the snapshot is
+moved, update `model_path`; failed launches retain `run_summary.json`, `run_summary.md`,
+and `generation.log` instead of silently leaving an ambiguous run.
 
 ## Smoke first
 
@@ -40,6 +40,21 @@ The smoke creates two candidates without a revision pass. Review its `run_summar
 ```powershell
 .\.venv\Scripts\python.exe scripts\run_quality_max_lane.py
 ```
+
+The validated RTX 4090 smoke on 2026-08-01 loaded the Qwen3-14B adapter in 26.129
+seconds and generated 482 effective tokens in 26.924 seconds (17.902 tokens/second
+across a batch of two). Both candidates reached EOS instead of the 384-token cap;
+the selected output contained 24 bars. PyTorch reported 9.744 GB peak allocated VRAM,
+while device telemetry peaked at 11,907 MiB. Available system RAM briefly fell below
+0.4 GB, so raw 27B-35B Transformers or QLoRA runs are not considered safe on the
+current 32 GB host even when quantized weights appear to fit the GPU.
+
+An already-local Gemma 4 26B-A4B Q4 GGUF also completed a one-candidate llama.cpp
+smoke. It generated at 152 tokens/second and peaked at 15,829 MiB device VRAM, but
+that single lyric sample was weaker than the Qwen3-14B winner. Treat larger MoE GGUF
+models as fast inference-side teacher, critic, mutation, or revision candidates until
+a same-prompt human evaluation demonstrates a quality win; they are not drop-in
+replacements for this Transformers/PEFT training lane.
 
 ## Flexible bar requests
 

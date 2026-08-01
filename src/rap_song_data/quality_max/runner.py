@@ -155,6 +155,16 @@ def _generate_pool(
     starting_index: int,
 ) -> tuple[list[dict[str, Any]], float, int]:
     formatted = _format_chat(tokenizer, messages)
+    configured_eos = getattr(model.generation_config, "eos_token_id", tokenizer.eos_token_id)
+    if configured_eos is None:
+        eos_token_ids: list[int] = []
+    elif isinstance(configured_eos, int):
+        eos_token_ids = [configured_eos]
+    else:
+        eos_token_ids = [int(token_id) for token_id in configured_eos]
+    if tokenizer.eos_token_id is not None and tokenizer.eos_token_id not in eos_token_ids:
+        eos_token_ids.append(int(tokenizer.eos_token_id))
+    eos_token_id_set = set(eos_token_ids)
     records: list[dict[str, Any]] = []
     total_tokens = 0
     generation_seconds = 0.0
@@ -184,22 +194,35 @@ def _generate_pool(
                 repetition_penalty=float(decoding["repetition_penalty"]),
                 no_repeat_ngram_size=int(decoding["no_repeat_ngram_size"]),
                 pad_token_id=tokenizer.pad_token_id,
-                eos_token_id=tokenizer.eos_token_id,
+                eos_token_id=eos_token_ids or tokenizer.eos_token_id,
                 use_cache=True,
             )
         torch.cuda.synchronize()
         generation_seconds += time.perf_counter() - started
         for row_index, output in enumerate(outputs):
             generated = output[input_tokens:]
-            raw = tokenizer.decode(generated, skip_special_tokens=False)
-            generated_tokens = int(generated.shape[-1])
-            total_tokens += generated_tokens
+            token_ids = [int(token_id) for token_id in generated.detach().cpu().tolist()]
+            first_eos = next(
+                (index for index, token_id in enumerate(token_ids) if token_id in eos_token_id_set),
+                None,
+            )
+            effective_ids = token_ids[:first_eos] if first_eos is not None else token_ids
+            raw = tokenizer.decode(effective_ids, skip_special_tokens=False)
+            generated_tokens = len(token_ids)
+            effective_generated_tokens = len(effective_ids)
+            hit_eos = first_eos is not None
+            hit_token_cap = not hit_eos and generated_tokens >= int(decoding["max_new_tokens"])
+            total_tokens += effective_generated_tokens
             records.append(
                 {
                     "candidate_index": starting_index + offset + row_index,
                     "stage": stage,
                     "batch_seed": batch_seed,
                     "generated_tokens": generated_tokens,
+                    "effective_generated_tokens": effective_generated_tokens,
+                    "hit_eos": hit_eos,
+                    "hit_token_cap": hit_token_cap,
+                    "finish_reason": "eos" if hit_eos else ("length" if hit_token_cap else "unknown"),
                     "raw_output": raw,
                     "lyrics": clean_lyrics(raw),
                 }

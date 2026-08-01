@@ -58,11 +58,23 @@ def test_cleaning_never_truncates_to_bar_range() -> None:
     assert len(clean_lyrics(raw).splitlines()) == 40
 
 
+def test_cleaning_repairs_common_mojibake() -> None:
+    assert clean_lyrics("futureâ€™s bright â€” keep going") == "future’s bright — keep going"
+
+
 def test_length_is_a_soft_score_not_a_rejection() -> None:
     short = "\n".join(f"short original bar {index}" for index in range(8))
     result = score_candidate(short, min_bars=12, max_bars=36)
     assert result["outside_soft_range"] is True
     assert 0.0 < result["components"]["bar_range"] < 1.0
+
+
+def test_token_cap_penalizes_completion_without_rejecting_candidate() -> None:
+    text = "\n".join(f"complete sounding bar number {index}" for index in range(16))
+    uncapped = score_candidate(text, min_bars=12, max_bars=36)
+    capped = score_candidate(text, min_bars=12, max_bars=36, hit_token_cap=True)
+    assert capped["score"] < uncapped["score"]
+    assert capped["hit_token_cap"] is True
 
 
 def test_ranker_preserves_every_candidate() -> None:

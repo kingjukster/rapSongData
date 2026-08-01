@@ -16,6 +16,16 @@ WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?")
 LABEL_RE = re.compile(r"^\s*(?:\[.*?]|(?:verse|hook|chorus|bridge|intro|outro)\s*:?\s*)$", re.I)
 ARTIFACT_RE = re.compile(r"(?:https?://|genius\.com|lyrics taken from|you might also like|embed\s*$)", re.I)
 SPECIAL_TOKEN_RE = re.compile(r"<\|.*?\|>|</?think>", re.I | re.S)
+MOJIBAKE_REPLACEMENTS = {
+    "â€™": "’",
+    "â€˜": "‘",
+    "â€œ": "“",
+    "â€": "”",
+    "â€”": "—",
+    "â€“": "–",
+    "â€¦": "…",
+    "Â": "",
+}
 
 
 def lyric_lines(text: str) -> list[str]:
@@ -27,6 +37,8 @@ def clean_lyrics(text: str) -> str:
     if "</think>" in text:
         text = text.split("</think>", 1)[1]
     text = SPECIAL_TOKEN_RE.sub("", text)
+    for broken, repaired in MOJIBAKE_REPLACEMENTS.items():
+        text = text.replace(broken, repaired)
     cleaned: list[str] = []
     for raw_line in text.splitlines():
         line = raw_line.strip().strip("`")
@@ -83,6 +95,7 @@ def score_candidate(
     min_bars: int,
     max_bars: int,
     keywords: str = "",
+    hit_token_cap: bool = False,
 ) -> dict[str, Any]:
     """Return component scores and a weighted local pre-rank score."""
     lines = lyric_lines(text)
@@ -101,6 +114,8 @@ def score_candidate(
         if len(last_words) < 4 or lines[-1].endswith((",", ":", ";", "-")):
             complete_ending = 0.35
     else:
+        complete_ending = 0.0
+    if hit_token_cap:
         complete_ending = 0.0
 
     components = {
@@ -129,6 +144,7 @@ def score_candidate(
         "bar_count": len(lines),
         "word_count": len(tokens),
         "outside_soft_range": not (min_bars <= len(lines) <= max_bars),
+        "hit_token_cap": bool(hit_token_cap),
         "components": {name: round(value, 6) for name, value in components.items()},
     }
 
@@ -148,6 +164,7 @@ def rank_candidates(
             min_bars=min_bars,
             max_bars=max_bars,
             keywords=keywords,
+            hit_token_cap=bool(record.get("hit_token_cap", False)),
         )
         ranked.append(record)
     ranked.sort(key=lambda item: (-float(item["metrics"]["score"]), int(item.get("candidate_index", 0))))
