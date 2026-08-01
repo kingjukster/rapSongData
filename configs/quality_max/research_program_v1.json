@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "lane": "quality_max_qwen3_14b_v1",
+  "objective": "Maximize visible lyric quality on local RTX 4090 hardware without preserving strict comparability to the existing 12-line baseline.",
+  "bar_policy": {
+    "default_soft_range": [12, 36],
+    "hard_truncation": false,
+    "hard_rejection": false,
+    "record_actual_bar_count": true
+  },
+  "task_mix_target": {
+    "original_generation": 0.45,
+    "verse_improvement": 0.25,
+    "lyric_mutation": 0.20,
+    "style_transfer": 0.10
+  },
+  "length_mix_target": {
+    "12_to_16": 0.30,
+    "17_to_24": 0.40,
+    "25_to_36": 0.30
+  },
+  "stages": [
+    "baseline existing Qwen3-14B adapter and base model",
+    "build provenance-safe multi-task SFT examples",
+    "smoke QLoRA configuration and validate generation artifacts",
+    "train one bounded quality-max adapter",
+    "generate multiple candidates and local revision passes",
+    "blind human review before promotion"
+  ],
+  "promotion_gates": [
+    "no hard safety or scraped-artifact regression",
+    "human preference win rate above the frozen baseline",
+    "no prompt family with material quality regression",
+    "12-36 bar requests show useful length responsiveness without post-hoc truncation",
+    "all run summaries include command, timing, throughput, versions, inputs, outputs, and peak VRAM"
+  ]
+}

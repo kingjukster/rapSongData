@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "lane": "quality_max_qwen3_14b_v1",
+  "base_model": "Qwen/Qwen3-14B",
+  "model_path": null,
+  "model_revision": "1cfa9a7208912126459214e8b04321603b3df60c",
+  "local_files_only": false,
+  "adapter_enabled": true,
+  "adapter_dir": "model/artifacts/qwen3-14b-12line-section-v51-e1-lr2e5-s20260724",
+  "attn_implementation": "sdpa",
+  "output_root": "runs/quality_max/qwen3_14b_v1",
+  "task_defaults": {
+    "mode": "generate",
+    "theme": "late-night ambition, pressure, and the cost of progress",
+    "style": "vivid scenes, layered internal rhyme, natural cadence, controlled punchlines, and coherent progression",
+    "keywords": "streetlights, dashboard, overtime, reflection",
+    "artist_reference": "",
+    "min_bars": 12,
+    "max_bars": 36,
+    "target_bars": 24
+  },
+  "generation": {
+    "candidates": 12,
+    "batch_size": 4,
+    "revision_rounds": 1,
+    "revision_candidates": 4,
+    "max_input_tokens": 1536,
+    "max_new_tokens": 768,
+    "temperature": 0.86,
+    "top_p": 0.92,
+    "top_k": 50,
+    "repetition_penalty": 1.12,
+    "no_repeat_ngram_size": 4,
+    "seed": 20260801
+  },
+  "smoke": {
+    "candidates": 2,
+    "batch_size": 2,
+    "revision_rounds": 0,
+    "revision_candidates": 1,
+    "max_input_tokens": 768,
+    "max_new_tokens": 192
+  }
+}
