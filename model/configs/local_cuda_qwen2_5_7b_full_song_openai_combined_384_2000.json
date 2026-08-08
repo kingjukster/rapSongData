@@ -1,0 +1,42 @@
+{
+  "base_model": "Qwen/Qwen2.5-7B-Instruct",
+  "output_dir": "model/artifacts/qwen2.5-7b-rap-lora-full-song-openai-combined-384-2000",
+  "add_structural_special_tokens": false,
+  "dataset": {
+    "train_path": "data/sft/rap_full_song_openai_sft_combined_top10k_plus_top250k_shard1_train.jsonl",
+    "validation_path": "data/sft/rap_full_song_openai_sft_combined_top10k_plus_top250k_shard1_validation.jsonl",
+    "format": "json",
+    "text_field": "training_text",
+    "cleaning_summary_path": "data/labels/rap_full_song_openai_sft_combined_top10k_plus_top250k_shard1_summary.json"
+  },
+  "training": {
+    "max_steps": 2000,
+    "num_train_epochs": 1,
+    "learning_rate": 0.0002,
+    "sequence_length": 384,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 4,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "tokenize_num_proc": 6,
+    "dataloader_num_workers": 0,
+    "timing_log_steps": 25,
+    "save_steps": 250,
+    "save_total_limit": 3,
+    "gradient_checkpointing": true,
+    "gradient_checkpointing_kwargs": {
+      "use_reentrant": false
+    },
+    "bf16": true,
+    "load_in_4bit": true,
+    "allow_tf32": true,
+    "float32_matmul_precision": "high",
+    "cudnn_benchmark": true,
+    "attn_implementation": "sdpa",
+    "enable_flash_sdp": true,
+    "enable_mem_efficient_sdp": true,
+    "optim": "paged_adamw_8bit",
+    "tokenized_cache_dir": "model/cache/tokenized_full_song_openai_combined_seq384"
+  }
+}

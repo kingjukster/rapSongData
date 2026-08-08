@@ -1,0 +1,146 @@
+[
+  {
+    "prompt_key": "balanced_smoke_t01_melodic",
+    "source_prompt_index": 1,
+    "prompt": "Write exactly 12 lines of original rap lyrics about ambition after public failure. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt_key": "balanced_smoke_t01_story",
+    "source_prompt_index": 2,
+    "prompt": "Write exactly 12 lines of original rap lyrics about ambition after public failure. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt_key": "balanced_smoke_t01_technical",
+    "source_prompt_index": 3,
+    "prompt": "Write exactly 12 lines of original rap lyrics about ambition after public failure. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt_key": "balanced_smoke_t01_clean",
+    "source_prompt_index": 4,
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about ambition after public failure. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "ambition after public failure",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt_key": "balanced_smoke_t06_melodic",
+    "source_prompt_index": 21,
+    "prompt": "Write exactly 12 lines of original rap lyrics about discipline, patience, and technical growth. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt_key": "balanced_smoke_t06_story",
+    "source_prompt_index": 22,
+    "prompt": "Write exactly 12 lines of original rap lyrics about discipline, patience, and technical growth. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt_key": "balanced_smoke_t06_technical",
+    "source_prompt_index": 23,
+    "prompt": "Write exactly 12 lines of original rap lyrics about discipline, patience, and technical growth. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt_key": "balanced_smoke_t06_clean",
+    "source_prompt_index": 24,
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about discipline, patience, and technical growth. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "discipline, patience, and technical growth",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt_key": "balanced_smoke_t11_melodic",
+    "source_prompt_index": 41,
+    "prompt": "Write exactly 12 lines of original rap lyrics about a first show in a half-empty room. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt_key": "balanced_smoke_t11_story",
+    "source_prompt_index": 42,
+    "prompt": "Write exactly 12 lines of original rap lyrics about a first show in a half-empty room. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt_key": "balanced_smoke_t11_technical",
+    "source_prompt_index": 43,
+    "prompt": "Write exactly 12 lines of original rap lyrics about a first show in a half-empty room. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt_key": "balanced_smoke_t11_clean",
+    "source_prompt_index": 44,
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about a first show in a half-empty room. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "a first show in a half-empty room",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt_key": "balanced_smoke_t15_melodic",
+    "source_prompt_index": 57,
+    "prompt": "Write exactly 12 lines of original rap lyrics about choosing craft over clout during a slow year. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt_key": "balanced_smoke_t15_story",
+    "source_prompt_index": 58,
+    "prompt": "Write exactly 12 lines of original rap lyrics about choosing craft over clout during a slow year. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt_key": "balanced_smoke_t15_technical",
+    "source_prompt_index": 59,
+    "prompt": "Write exactly 12 lines of original rap lyrics about choosing craft over clout during a slow year. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt_key": "balanced_smoke_t15_clean",
+    "source_prompt_index": 60,
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about choosing craft over clout during a slow year. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "choosing craft over clout during a slow year",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  }
+]

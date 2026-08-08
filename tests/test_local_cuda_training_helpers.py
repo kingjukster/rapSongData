@@ -1,16 +1,38 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
+
+from rap_song_data.training import local_cuda
 
 from rap_song_data.training.local_cuda import (
     assistant_only_labels,
     classify_training_completion,
     dataset_selection_cache_metadata,
     dataset_fingerprints,
+    emit_policy_warnings,
+    filter_training_args_for_signature,
     resolve_max_steps,
+    write_run_summary,
 )
+
+
+def test_training_timestamp_runtime_is_available() -> None:
+    assert local_cuda.dt.datetime.now().tzinfo is None
+
+
+def test_policy_warning_reports_actual_gradient_accumulation() -> None:
+    warnings = emit_policy_warnings(
+        {"sequence_length": 1024, "gradient_accumulation_steps": 2},
+        {"format": "json", "train_path": "train.jsonl"},
+    )
+
+    assert warnings == [
+        "gradient_accumulation_steps=2 is being used for faster iteration; "
+        "for strict comparability, prefer a higher accumulation setting (8)."
+    ]
 
 
 def test_assistant_only_labels_mask_prompt_and_keep_target() -> None:
@@ -59,6 +81,80 @@ def test_dataset_fingerprint_changes_when_file_changes(tmp_path: Path) -> None:
 )
 def test_resolve_max_steps_supports_true_epoch_mode(configured: int | None, expected: int | None) -> None:
     assert resolve_max_steps({"max_steps": configured}) == expected
+
+
+@pytest.mark.parametrize(
+    ("enabled", "expected"),
+    [(True, "group_by_length"), (False, "random")],
+)
+def test_training_args_map_group_by_length_for_transformers_5_12(
+    enabled: bool,
+    expected: str,
+) -> None:
+    filtered = filter_training_args_for_signature(
+        {
+            "group_by_length": enabled,
+            "eval_strategy": "epoch",
+            "unsupported": "drop-me",
+        },
+        {
+            "train_sampling_strategy": object(),
+            "eval_strategy": object(),
+        },
+    )
+
+    assert filtered == {
+        "train_sampling_strategy": expected,
+        "eval_strategy": "epoch",
+    }
+
+
+def test_training_args_retain_legacy_group_by_length_and_eval_name() -> None:
+    filtered = filter_training_args_for_signature(
+        {
+            "group_by_length": True,
+            "eval_strategy": "epoch",
+        },
+        {
+            "group_by_length": object(),
+            "evaluation_strategy": object(),
+        },
+    )
+
+    assert filtered == {
+        "group_by_length": True,
+        "evaluation_strategy": "epoch",
+    }
+
+
+def test_run_summary_reports_epoch_mode_max_steps_as_null(tmp_path: Path) -> None:
+    summary_path, _ = write_run_summary(
+        output_dir=tmp_path,
+        command=["python", "train.py"],
+        run_started_at="2026-07-12T00:00:00-05:00",
+        run_ended_at="2026-07-12T00:01:00-05:00",
+        run_wall_seconds=60.0,
+        base_model="Qwen/Qwen3-4B",
+        dataset_cfg={
+            "train_path": "train.jsonl",
+            "validation_path": "validation.jsonl",
+            "text_field": "training_text",
+        },
+        training_cfg={
+            "max_steps": 0,
+            "sequence_length": 512,
+            "per_device_train_batch_size": 2,
+            "gradient_accumulation_steps": 2,
+            "learning_rate": 2e-5,
+        },
+        timing_records=[],
+        result={"status": "complete_full_budget"},
+        policy_warnings=[],
+        runtime={},
+    )
+
+    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert payload["training"]["max_steps"] is None
 
 
 def test_dataset_selection_settings_participate_in_cache_metadata() -> None:

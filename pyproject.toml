@@ -36,6 +36,12 @@ cloud = [
   "python-dotenv",
   "runpod-flash",
 ]
+judge = [
+  "openai>=1.0",
+]
+metrics = [
+  "mauve-text>=0.3.0",
+]
 dev = [
   "pytest>=8.0",
 ]
@@ -50,6 +56,7 @@ rap-cuda-smoke = "rap_song_data.training.local_cuda_smoke:main"
 rap-generate-local = "rap_song_data.generation.local:main"
 rap-evaluate-generation = "rap_song_data.evaluation.remote_generation:main"
 rap-evaluate-fixed = "rap_song_data.evaluation.fixed_generation:main"
+rap-scratch = "rap_song_data.scratch.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

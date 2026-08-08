@@ -95,8 +95,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-model", default=DEFAULT_BASE_MODEL)
     parser.add_argument("--adapter-dir", type=Path, default=DEFAULT_ADAPTER_DIR)
     parser.add_argument("--task", choices=["generate_song", "generate_verse"], default="generate_verse")
+    parser.add_argument(
+        "--prompt-format",
+        choices=["legacy", "chatml"],
+        default="legacy",
+        help="Prompt format to send to the model. Use chatml for Qwen ChatML SFT adapters.",
+    )
     parser.add_argument("--load-in-4bit", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--add-structural-special-tokens", action=argparse.BooleanOptionalAction, default=False)
+    parser.add_argument(
+        "--enforce-qwen25-7b",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Require Qwen2.5-7B as the base model for legacy strict-comparison runs.",
+    )
     parser.add_argument("--title", default="Untitled")
     parser.add_argument("--artist", default="Original")
     parser.add_argument("--rap-family", default="Melodic / Emo / Cloud")
@@ -129,6 +141,22 @@ def parse_args() -> argparse.Namespace:
 
 
 def build_prompt(args: argparse.Namespace) -> str:
+    if args.prompt_format == "chatml":
+        if args.task != "generate_verse":
+            raise ValueError("chatml prompt format currently supports generate_verse only")
+        content = (
+            f"Write exactly {args.target_bars} lines of original rap lyrics about {args.theme}. "
+            f"Use {args.rap_family} feel and {args.rap_category} style. "
+            f"Keywords: {args.keywords}. "
+            f"{args.structure} {args.rules}"
+        )
+        return (
+            "<|im_start|>system\n"
+            "Generate original rap lyrics. Do not copy existing songs.<|im_end|>\n"
+            "<|im_start|>user\n"
+            f"{content.strip()}<|im_end|>\n"
+            "<|im_start|>assistant\n"
+        )
     if args.task == "generate_verse":
         return (
             "<|task|>generate_verse\n"
@@ -171,6 +199,13 @@ def blocked_phrase_ids(tokenizer) -> list[list[int]]:
 
 
 def clean_generated_lyrics(text: str) -> str:
+    if "<|im_start|>assistant" in text:
+        text = text.rsplit("<|im_start|>assistant", 1)[1]
+        text = text.lstrip("\n")
+    elif "\nassistant\n" in text:
+        text = text.rsplit("\nassistant\n", 1)[1]
+    if "<|im_end|>" in text:
+        text = text.split("<|im_end|>", 1)[0]
     if "<|lyrics|>" in text:
         text = text.split("<|lyrics|>", 1)[1]
     if VERSE_END_TOKEN in text:
@@ -215,7 +250,8 @@ def main() -> None:
     from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
     args = parse_args()
-    validate_qwen25_7b_only(args.base_model, scope="Generation run")
+    if args.enforce_qwen25_7b:
+        validate_qwen25_7b_only(args.base_model, scope="Generation run")
     command = [sys.executable, *sys.argv]
     command_hash = hashlib.md5(" ".join(str(item) for item in command).encode("utf-8")).hexdigest()
     run_started_at = dt.datetime.now().astimezone().isoformat(timespec="seconds")
@@ -333,6 +369,7 @@ def main() -> None:
             "seed": args.seed,
             "target_bars": args.target_bars,
             "max_words_per_bar": args.max_words_per_bar,
+            "prompt_format": args.prompt_format,
             "load_in_4bit": args.load_in_4bit,
             "add_structural_special_tokens": args.add_structural_special_tokens,
             "clean_output": args.clean_output,

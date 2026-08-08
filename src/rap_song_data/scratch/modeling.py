@@ -17,6 +17,17 @@ class ScratchModelSpec:
     rope_theta: float = 10_000.0
     tie_word_embeddings: bool = True
 
+    @classmethod
+    def from_mapping(cls, values: dict[str, Any] | None) -> "ScratchModelSpec":
+        spec = cls()
+        if not values:
+            return spec
+        data = asdict(spec)
+        for key in data:
+            if key in values:
+                data[key] = values[key]
+        return cls(**data)
+
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 

@@ -1,0 +1,16 @@
+[
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing a bicycle chain beneath an apartment stairwell. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle chain beneath an apartment stairwell",
+    "style": "Make every line move the same scene forward",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about repairing a bicycle chain beneath an apartment stairwell. Use clean, radio-safe phrasing with no profanity or slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle chain beneath an apartment stairwell",
+    "style": "Use clean, radio-safe phrasing with no profanity or slurs",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  }
+]

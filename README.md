@@ -37,6 +37,12 @@ For local GPU training, install a CUDA-compatible PyTorch build first, then:
 python -m pip install -e ".[data,cuda,dev]"
 ```
 
+For the optional OpenAI-backed quality judge, include the `judge` extra:
+
+```powershell
+python -m pip install -e ".[data,cuda,judge,dev]"
+```
+
 The existing dependency list remains available in
 `requirements-local-cuda.txt` for environments that do not use extras.
 

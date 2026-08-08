@@ -18,6 +18,7 @@ import html
 import json
 import re
 import sqlite3
+import sys
 import time
 import unicodedata
 from collections import Counter, defaultdict
@@ -29,6 +30,12 @@ from typing import Any, Iterable, Iterator
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
+
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
 
 
 DEFAULT_OUTPUT_ROOT = Path("data/corpus_lake/normalized/private_lyrics_exact_dedupe")
@@ -407,6 +414,22 @@ def iter_source_rows(spec: SourceSpec, chunksize: int) -> Iterator[tuple[str, in
                 row_offset += 1
         return
 
+    if spec.format == "tsv":
+        if not spec.path.exists():
+            raise FileNotFoundError(spec.path)
+        row_offset = 0
+        for chunk in pd.read_csv(
+            spec.path,
+            chunksize=chunksize,
+            encoding_errors="replace",
+            low_memory=False,
+            sep="\t",
+        ):
+            for row in chunk.to_dict("records"):
+                yield str(spec.path), row_offset, row
+                row_offset += 1
+        return
+
     if spec.format == "csv_dir":
         files = sorted(spec.path.glob(spec.include_glob or "*.csv"))
         if not files:
@@ -457,6 +480,40 @@ def iter_source_rows(spec: SourceSpec, chunksize: int) -> Iterator[tuple[str, in
         for row_offset, row in enumerate(rows):
             if isinstance(row, dict):
                 yield str(spec.path), row_offset, row
+        return
+
+    if spec.format == "jsonl":
+        if not spec.path.exists():
+            raise FileNotFoundError(spec.path)
+        with spec.path.open("r", encoding="utf-8", errors="replace") as handle:
+            for row_offset, line in enumerate(handle):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict):
+                    yield str(spec.path), row_offset, row
+        return
+
+    if spec.format == "jsonl_dir":
+        files = sorted(spec.path.glob(spec.include_glob or "*.jsonl"))
+        if not files:
+            raise FileNotFoundError(f"No JSONL files found under {spec.path}")
+        for file_path in files:
+            with file_path.open("r", encoding="utf-8", errors="replace") as handle:
+                for row_offset, line in enumerate(handle):
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        row = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(row, dict):
+                        yield str(file_path), row_offset, row
         return
 
     if spec.format == "text_dir":
@@ -629,6 +686,14 @@ def write_report(output_dir: Path, summary: dict[str, Any]) -> None:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preset", choices=sorted(PRESETS), default="genius_family")
+    parser.add_argument(
+        "--source-config",
+        type=Path,
+        help=(
+            "JSON file containing a sources array of SourceSpec-compatible objects. "
+            "When provided, these sources replace the built-in preset."
+        ),
+    )
     parser.add_argument("--output-root", type=Path, default=DEFAULT_OUTPUT_ROOT)
     parser.add_argument("--snapshot-id", default=DEFAULT_SNAPSHOT_ID)
     parser.add_argument("--chunksize", type=int, default=50_000)
@@ -657,6 +722,34 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def source_spec_from_mapping(row: dict[str, Any]) -> SourceSpec:
+    required = ("source_id", "source_family", "path", "format", "lyric_columns")
+    missing = [key for key in required if key not in row]
+    if missing:
+        raise ValueError(f"Source config row is missing required keys {missing}: {row}")
+    return SourceSpec(
+        source_id=str(row["source_id"]),
+        source_family=str(row["source_family"]),
+        path=Path(str(row["path"])),
+        format=str(row["format"]),
+        lyric_columns=tuple(str(value) for value in row["lyric_columns"]),
+        title_columns=tuple(str(value) for value in row.get("title_columns", SourceSpec("", "", Path(), "", ()).title_columns)),
+        artist_columns=tuple(str(value) for value in row.get("artist_columns", SourceSpec("", "", Path(), "", ()).artist_columns)),
+        genre_columns=tuple(str(value) for value in row.get("genre_columns", SourceSpec("", "", Path(), "", ()).genre_columns)),
+        language_columns=tuple(str(value) for value in row.get("language_columns", SourceSpec("", "", Path(), "", ()).language_columns)),
+        year_columns=tuple(str(value) for value in row.get("year_columns", SourceSpec("", "", Path(), "", ()).year_columns)),
+        include_glob=str(row["include_glob"]) if row.get("include_glob") else None,
+    )
+
+
+def load_source_config(path: Path) -> tuple[SourceSpec, ...]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    rows = payload.get("sources") if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        raise ValueError(f"Expected a JSON array or object with a sources array: {path}")
+    return tuple(source_spec_from_mapping(row) for row in rows)
+
+
 def jsonable_args(args: argparse.Namespace) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in vars(args).items():
@@ -672,7 +765,10 @@ def jsonable_args(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> int:
     args = parse_args()
     excluded_sources = set(args.exclude_source or [])
-    sources = tuple(spec for spec in PRESETS[args.preset] if spec.source_id not in excluded_sources)
+    if args.source_config:
+        sources = tuple(spec for spec in load_source_config(args.source_config) if spec.source_id not in excluded_sources)
+    else:
+        sources = tuple(spec for spec in PRESETS[args.preset] if spec.source_id not in excluded_sources)
     output_dir = args.output_root / args.snapshot_id
     output_dir.mkdir(parents=True, exist_ok=True)
     db_path = output_dir / "dedupe_index.sqlite"

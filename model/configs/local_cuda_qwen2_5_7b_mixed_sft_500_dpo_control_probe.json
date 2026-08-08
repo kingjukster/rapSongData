@@ -1,0 +1,18 @@
+{
+  "experiment_name": "qwen2.5-7b-rap-lora-mixed-sft-500-dpo-control-probe",
+  "base_model": "Qwen/Qwen2.5-7B-Instruct",
+  "base_adapter_path": "model/artifacts/qwen2.5-7b-rap-lora-mixed-sft-384-500-simple/checkpoint-500",
+  "dpo_pairs_path": "data/preferences/rap_dpo_control_pairs.jsonl",
+  "output_dir": "model/artifacts/qwen2.5-7b-rap-lora-mixed-sft-500-dpo-control-probe",
+  "seed": 20260617,
+  "max_length": 768,
+  "max_prompt_length": 256,
+  "epochs": 1.0,
+  "learning_rate": 0.000005,
+  "beta": 0.05,
+  "batch_size": 1,
+  "gradient_accumulation_steps": 4,
+  "save_steps": 100,
+  "logging_steps": 10,
+  "num_train_epochs": 1
+}

@@ -11,6 +11,7 @@ import re
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 try:
     from dotenv import load_dotenv
@@ -73,6 +74,30 @@ def validate_qwen25_7b_only(model_name: str, *, scope: str) -> str:
         )
     return normalized
 
+
+def generation_eos_token_ids(model: Any, tokenizer: Any) -> int | list[int]:
+    """Honor model-specific stop tokens while retaining tokenizer fallback."""
+    configured = getattr(getattr(model, "generation_config", None), "eos_token_id", None)
+    if configured is None:
+        configured = getattr(tokenizer, "eos_token_id", None)
+    if isinstance(configured, (list, tuple)):
+        unique = list(dict.fromkeys(int(token_id) for token_id in configured))
+        if not unique:
+            raise ValueError("Model and tokenizer do not define an EOS token.")
+        return unique
+    if configured is None:
+        raise ValueError("Model and tokenizer do not define an EOS token.")
+    return int(configured)
+
+
+def generation_pad_token_id(tokenizer: Any) -> int:
+    configured = getattr(tokenizer, "pad_token_id", None)
+    if configured is None:
+        configured = getattr(tokenizer, "eos_token_id", None)
+    if configured is None:
+        raise ValueError("Tokenizer does not define a pad or EOS token.")
+    return int(configured)
+
 WORD_RE = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)?")
 SLUR_RE = re.compile(
     r"\b(?:nigga(?:s)?|nigger(?:s)?|faggot(?:s)?|fa[g]{2}(?:ot)?s?)\b",
@@ -93,6 +118,7 @@ AGGRESSIVE_DANGLING_FINAL_LINE_RE = re.compile(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-model", default="Qwen/Qwen2.5-7B-Instruct")
+    parser.add_argument("--model-revision", default=None, help="Optional immutable Hugging Face revision.")
     parser.add_argument("--adapter-dir", type=Path, default=None)
     parser.add_argument(
         "--no-adapter",
@@ -179,22 +205,39 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def load_prompts(path: Path | None) -> list[str]:
+def load_prompt_specs(path: Path | None) -> list[dict[str, object]]:
     if path is None:
-        return list(DEFAULT_PROMPTS)
+        return [{"prompt": prompt, "generation_prompt_index": index} for index, prompt in enumerate(DEFAULT_PROMPTS, start=1)]
     text = path.read_text(encoding="utf-8").strip()
     if not text:
         raise ValueError(f"Prompt file is empty: {path}")
     if path.suffix.lower() == ".json":
         payload = json.loads(text)
-        if not isinstance(payload, list) or not all(isinstance(item, str) for item in payload):
-            raise ValueError("JSON prompt file must be a list of strings")
-        prompts = [item.strip() for item in payload if item.strip()]
+        if not isinstance(payload, list):
+            raise ValueError("JSON prompt file must be a list")
+        prompts: list[dict[str, object]] = []
+        for local_index, item in enumerate(payload, start=1):
+            prompt = item if isinstance(item, str) else item.get("prompt") if isinstance(item, dict) else None
+            if not isinstance(prompt, str):
+                raise ValueError("JSON prompts must be strings or objects with a string 'prompt' field")
+            if prompt.strip():
+                generation_prompt_index = item.get("generation_prompt_index", local_index) if isinstance(item, dict) else local_index
+                if not isinstance(generation_prompt_index, int) or generation_prompt_index < 1:
+                    raise ValueError("generation_prompt_index must be a positive integer")
+                prompts.append({"prompt": prompt.strip(), "generation_prompt_index": generation_prompt_index})
     else:
-        prompts = [line.strip() for line in text.splitlines() if line.strip()]
+        prompts = [
+            {"prompt": line.strip(), "generation_prompt_index": index}
+            for index, line in enumerate((line for line in text.splitlines() if line.strip()), start=1)
+        ]
     if not prompts:
         raise ValueError(f"No prompts found in prompt file: {path}")
     return prompts
+
+
+def load_prompts(path: Path | None) -> list[str]:
+    """Compatibility wrapper returning prompt text only."""
+    return [str(spec["prompt"]) for spec in load_prompt_specs(path)]
 
 
 def configure_runtime(torch) -> dict[str, object]:
@@ -646,9 +689,13 @@ def main() -> None:
                 f"falling back to base model tokenizer. Error: {exc}",
                 file=sys.stderr,
             )
-            tokenizer = AutoTokenizer.from_pretrained(args.base_model, use_fast=True)
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.base_model, revision=args.model_revision, use_fast=True
+            )
     else:
-        tokenizer = AutoTokenizer.from_pretrained(args.base_model, use_fast=True)
+        tokenizer = AutoTokenizer.from_pretrained(
+            args.base_model, revision=args.model_revision, use_fast=True
+        )
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -663,7 +710,9 @@ def main() -> None:
     else:
         model_kwargs["torch_dtype"] = dtype
 
-    model = AutoModelForCausalLM.from_pretrained(args.base_model, **model_kwargs)
+    model = AutoModelForCausalLM.from_pretrained(
+        args.base_model, revision=args.model_revision, **model_kwargs
+    )
     embedding_size = model.get_input_embeddings().weight.shape[0]
     if len(tokenizer) != embedding_size:
         model.resize_token_embeddings(len(tokenizer))
@@ -676,6 +725,8 @@ def main() -> None:
     if use_cuda:
         torch.cuda.synchronize()
     load_seconds = time.perf_counter() - load_started_at
+    eos_token_ids = generation_eos_token_ids(model, tokenizer)
+    pad_token_id = generation_pad_token_id(tokenizer)
 
     settings = {
         "max_new_tokens": args.max_new_tokens,
@@ -690,6 +741,7 @@ def main() -> None:
         "samples_per_prompt": args.samples_per_prompt,
         "sample_batch_size": args.sample_batch_size,
         "base_model": args.base_model,
+        "model_revision": args.model_revision,
         "adapter_path": str(args.adapter_dir) if args.adapter_dir is not None else None,
         "load_in_4bit": args.load_in_4bit,
         "enable_thinking": not args.disable_thinking,
@@ -716,7 +768,7 @@ def main() -> None:
         "torch_cuda": torch.version.cuda,
     }
 
-    prompts = load_prompts(args.prompts_file)
+    prompt_specs = load_prompt_specs(args.prompts_file)
     records = []
     bad_words = blocked_phrase_ids(tokenizer, block_slurs=args.block_slurs)
     settings["blocked_token_sequence_count"] = len(bad_words)
@@ -726,7 +778,9 @@ def main() -> None:
         raise ValueError("--sample-batch-size must be at least 1")
 
     record_index = 0
-    for prompt_index, prompt in enumerate(prompts, start=1):
+    for local_prompt_index, prompt_spec in enumerate(prompt_specs, start=1):
+        prompt = str(prompt_spec["prompt"])
+        prompt_index = int(prompt_spec.get("generation_prompt_index") or local_prompt_index)
         prompt_max_new_tokens = effective_max_new_tokens(prompt, args)
         chat_template_kwargs = {}
         if args.disable_thinking:
@@ -783,8 +837,8 @@ def main() -> None:
                     repetition_penalty=args.repetition_penalty,
                     no_repeat_ngram_size=args.no_repeat_ngram_size,
                     bad_words_ids=bad_words,
-                    pad_token_id=tokenizer.eos_token_id,
-                    eos_token_id=tokenizer.eos_token_id,
+                    pad_token_id=pad_token_id,
+                    eos_token_id=eos_token_ids,
                 )
             if use_cuda:
                 torch.cuda.synchronize()

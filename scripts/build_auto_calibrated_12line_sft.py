@@ -18,9 +18,16 @@ DEFAULT_JUDGED = Path("reports/qwen3_4b_base_12line_v1_auto_quality_judge/judged
 DEFAULT_RAW = Path("data/sweeps/qwen3_4b_base_12line_v1_quality1200_retry2/sweep_raw.jsonl")
 DEFAULT_SUMMARY = DEFAULT_RAW.with_name("sweep_summary.json")
 DEFAULT_OUTPUT = Path("data/training/qwen3_4b_12line_auto_calibrated_v2")
+DEFAULT_V3_OUTPUT = Path("data/training/qwen3_4b_12line_auto_calibrated_v3")
 MODEL_REVISION = "1cfa9a7208912126459214e8b04321603b3df60c"
 MODEL_REVISION_SOURCE = "retrospective_single_local_hf_snapshot_created_before_source_run"
 CRITERIA_VERSION = "automated_consensus_v2"
+BALANCED_FAMILIES = ("melodic", "story", "technical", "clean")
+DEFAULT_V3_FAMILY_QUOTA = 33
+QUALITY_TIER_1 = "tier_1_imagery_and_payoff"
+QUALITY_TIER_2 = "tier_2_imagery_or_payoff"
+QUALITY_TIER_3 = "tier_3_consensus_eligible"
+QUALITY_TIERS = (QUALITY_TIER_1, QUALITY_TIER_2, QUALITY_TIER_3)
 REQUIRED_DIMENSIONS = {
     "theme_adherence": 4,
     "imagery": 3,
@@ -32,19 +39,40 @@ REQUIRED_DIMENSIONS = {
 }
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--judged", type=Path, default=DEFAULT_JUDGED)
     parser.add_argument("--raw-generations", type=Path, default=DEFAULT_RAW)
     parser.add_argument("--generation-summary", type=Path, default=DEFAULT_SUMMARY)
-    parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--dataset-version",
+        choices=("v2", "v3"),
+        default="v2",
+        help="v2 preserves legacy score selection; v3 enables balanced tiered family selection.",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=None,
+        help="Defaults to the versioned qwen3_4b_12line_auto_calibrated_v2/v3 directory.",
+    )
     parser.add_argument("--min-calibrated-score", type=float, default=3.5)
     parser.add_argument("--min-examples", type=int, default=100)
     parser.add_argument("--max-examples", type=int, default=300)
     parser.add_argument("--preference-margin", type=float, default=0.75)
     parser.add_argument("--max-rejects-per-chosen", type=int, default=3)
     parser.add_argument("--seed", type=int, default=20260710)
-    return parser.parse_args()
+    for family in BALANCED_FAMILIES:
+        parser.add_argument(
+            f"--{family}-quota",
+            type=int,
+            default=DEFAULT_V3_FAMILY_QUOTA,
+            help=f"Number of {family} examples selected by --dataset-version v3.",
+        )
+    args = parser.parse_args(argv)
+    if args.output_dir is None:
+        args.output_dir = DEFAULT_V3_OUTPUT if args.dataset_version == "v3" else DEFAULT_OUTPUT
+    return args
 
 
 def read_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -96,6 +124,87 @@ def score(row: dict[str, Any]) -> float:
         return float(row.get("calibrated_review_score") or 0.0)
     except (TypeError, ValueError):
         return 0.0
+
+
+def dimension_scores(row: dict[str, Any]) -> dict[str, Any]:
+    judge = row.get("judge") if isinstance(row.get("judge"), dict) else {}
+    dimensions = judge.get("dimension_scores") if isinstance(judge.get("dimension_scores"), dict) else {}
+    return dimensions
+
+
+def quality_tier(row: dict[str, Any]) -> str:
+    """Return the v3 quality tier used for deterministic family selection."""
+    dimensions = dimension_scores(row)
+    imagery = int(dimensions.get("imagery") or 0)
+    payoff = int(dimensions.get("ending_payoff") or 0)
+    if imagery >= 4 and payoff >= 4:
+        return QUALITY_TIER_1
+    supporting_dimensions_pass = all(
+        int(dimensions.get(name) or 0) >= REQUIRED_DIMENSIONS[name]
+        for name in ("originality", "rhyme_cadence", "naturalness")
+    )
+    if (imagery >= 4 or payoff >= 4) and supporting_dimensions_pass:
+        return QUALITY_TIER_2
+    return QUALITY_TIER_3
+
+
+def worst_dimension_score(row: dict[str, Any]) -> int:
+    dimensions = dimension_scores(row)
+    return min(int(dimensions.get(name) or 0) for name in REQUIRED_DIMENSIONS)
+
+
+def tiered_quality_key(row: dict[str, Any]) -> tuple[int, int, float, str]:
+    """Sort high-quality rows first with a stable candidate-id tie break."""
+    return (
+        QUALITY_TIERS.index(quality_tier(row)),
+        -worst_dimension_score(row),
+        -score(row),
+        candidate_id(row),
+    )
+
+
+def select_balanced_examples(
+    rows: list[dict[str, Any]],
+    family_quotas: dict[str, int],
+) -> list[dict[str, Any]]:
+    """Select an exact, deterministic quota from each requested prompt family."""
+    selected: list[dict[str, Any]] = []
+    for family in BALANCED_FAMILIES:
+        if family not in family_quotas:
+            continue
+        quota = family_quotas[family]
+        candidates = sorted(
+            (row for row in rows if normalize(row.get("prompt_family")) == family),
+            key=tiered_quality_key,
+        )
+        if len(candidates) < quota:
+            raise SystemExit(
+                f"Only {len(candidates)} {family} examples passed; v3 quota is {quota}"
+            )
+        for rank, row in enumerate(candidates[:quota], start=1):
+            copied = dict(row)
+            copied["selection_metadata"] = {
+                "quality_tier": quality_tier(row),
+                "worst_dimension_score": worst_dimension_score(row),
+                "family_rank": rank,
+                "family_quota": quota,
+            }
+            selected.append(copied)
+    ensure_unique_lyrics(selected)
+    return selected
+
+
+def ensure_unique_lyrics(rows: list[dict[str, Any]]) -> None:
+    seen: dict[str, str] = {}
+    for row in rows:
+        text_hash = normalized_sha256(row.get("lyrics"))
+        duplicate_of = seen.get(text_hash)
+        if duplicate_of is not None:
+            raise ValueError(
+                "Duplicate normalized lyrics selected: "
+                f"{candidate_id(row)} duplicates {duplicate_of} ({text_hash})"
+            )
+        seen[text_hash] = candidate_id(row)
 
 
 def candidate_id(row: dict[str, Any]) -> str:
@@ -209,12 +318,16 @@ def automated_calibration(row: dict[str, Any], min_score: float) -> dict[str, An
     }
 
 
+def theme_group_key(row: dict[str, Any]) -> str:
+    theme = normalize(row.get("theme"))
+    return f"theme:{theme}" if theme else f"prompt:{row.get('prompt_key')}"
+
+
 def split_theme_groups(rows: list[dict[str, Any]], seed: int) -> dict[str, list[dict[str, Any]]]:
+    """Legacy v2 split behavior, intentionally unchanged."""
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        theme = normalize(row.get("theme"))
-        key = f"theme:{theme}" if theme else f"prompt:{row.get('prompt_key')}"
-        groups[key].append(row)
+        groups[theme_group_key(row)].append(row)
     if len(groups) < 3:
         raise ValueError("At least three theme groups are required")
     ordered = sorted(groups, key=lambda key: stable_int(str(seed), key))
@@ -233,6 +346,168 @@ def split_theme_groups(rows: list[dict[str, Any]], seed: int) -> dict[str, list[
     return splits
 
 
+def _split_family_counts(
+    values: Iterable[dict[str, Any]], families: tuple[str, ...]
+) -> Counter[str]:
+    expected = set(families)
+    return Counter(
+        family
+        for row in values
+        if (family := normalize(row.get("prompt_family"))) in expected
+    )
+
+
+def split_balanced_theme_groups(
+    rows: list[dict[str, Any]],
+    seed: int,
+    families: tuple[str, ...] = BALANCED_FAMILIES,
+) -> dict[str, list[dict[str, Any]]]:
+    """Keep themes isolated while optimizing 80/10/10 per-family balance."""
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in rows:
+        groups[theme_group_key(row)].append(row)
+    if len(groups) < 3:
+        raise ValueError("At least three theme groups are required")
+
+    keys = sorted(groups, key=lambda key: (stable_int(str(seed), key), key))
+    group_counts = [_split_family_counts(groups[key], families) for key in keys]
+    total_counts = _split_family_counts(rows, families)
+    missing = [family for family in families if not total_counts[family]]
+    if missing:
+        raise ValueError(f"Balanced split is missing required families: {', '.join(missing)}")
+    thin = [
+        family
+        for family in families
+        if sum(bool(counts[family]) for counts in group_counts) < 3
+    ]
+    if thin:
+        raise ValueError(
+            "Each family must occur in at least three theme groups for isolated splits: "
+            + ", ".join(thin)
+        )
+
+    family_targets = {family: total_counts[family] * 0.10 for family in families}
+    row_target = len(rows) * 0.10
+
+    def subset_details(mask: int) -> tuple[Counter[str], int, int]:
+        counts: Counter[str] = Counter()
+        row_count = 0
+        group_count = 0
+        for index, values in enumerate(group_counts):
+            if mask & (1 << index):
+                counts.update(values)
+                row_count += len(groups[keys[index]])
+                group_count += 1
+        return counts, row_count, group_count
+
+    def subset_cost(counts: Counter[str], row_count: int, group_count: int) -> float:
+        family_cost = sum(
+            ((counts[family] - family_targets[family]) / max(1.0, family_targets[family])) ** 2
+            for family in families
+        )
+        row_cost = ((row_count - row_target) / max(1.0, row_target)) ** 2
+        return family_cost + row_cost + group_count * 1e-6
+
+    candidate_masks: set[int] = set()
+    group_total = len(keys)
+    if group_total <= 18:
+        for mask in range(1, (1 << group_total) - 1):
+            counts, _, _ = subset_details(mask)
+            if all(counts[family] for family in families):
+                candidate_masks.add(mask)
+    else:
+        # Large prompt-only corpora use deterministic greedy starts to avoid an
+        # exponential search. The real v3 source has only a dozen theme groups.
+        for start in range(group_total):
+            mask = 1 << start
+            while True:
+                counts, row_count, group_count = subset_details(mask)
+                if all(counts[family] for family in families) and row_count >= row_target * 0.75:
+                    candidate_masks.add(mask)
+                    break
+                additions: list[tuple[float, int, int]] = []
+                for index in range(group_total):
+                    bit = 1 << index
+                    if mask & bit:
+                        continue
+                    next_mask = mask | bit
+                    next_counts, next_rows, next_groups = subset_details(next_mask)
+                    missing_count = sum(not next_counts[family] for family in families)
+                    additions.append(
+                        (
+                            missing_count * 1_000_000.0
+                            + subset_cost(next_counts, next_rows, next_groups),
+                            stable_int(str(seed), str(start), keys[index]),
+                            next_mask,
+                        )
+                    )
+                if not additions:
+                    break
+                mask = min(additions)[2]
+
+    candidates: list[tuple[float, int, int, Counter[str], int]] = []
+    for mask in candidate_masks:
+        counts, row_count, group_count = subset_details(mask)
+        selected_keys = "\n".join(keys[index] for index in range(group_total) if mask & (1 << index))
+        candidates.append(
+            (
+                subset_cost(counts, row_count, group_count),
+                stable_int(str(seed), selected_keys),
+                mask,
+                counts,
+                row_count,
+            )
+        )
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]))
+    candidates = candidates[:1024]
+
+    best: tuple[float, int, int, int] | None = None
+    all_mask = (1 << group_total) - 1
+    for validation in candidates:
+        for test in candidates:
+            validation_mask = validation[2]
+            test_mask = test[2]
+            if validation_mask & test_mask:
+                continue
+            train_mask = all_mask ^ validation_mask ^ test_mask
+            if not train_mask:
+                continue
+            train_counts, _, _ = subset_details(train_mask)
+            if not all(train_counts[family] for family in families):
+                continue
+            symmetry_cost = sum(
+                (
+                    (validation[3][family] - test[3][family])
+                    / max(1.0, family_targets[family])
+                )
+                ** 2
+                for family in families
+            )
+            cost = validation[0] + test[0] + symmetry_cost * 0.25
+            tie = stable_int(str(seed), str(validation_mask), str(test_mask))
+            result = (cost, tie, validation_mask, test_mask)
+            if best is None or result < best:
+                best = result
+    if best is None:
+        raise ValueError("Could not create disjoint theme-isolated splits containing every family")
+
+    assignments: dict[str, str] = {}
+    validation_mask, test_mask = best[2], best[3]
+    for index, key in enumerate(keys):
+        bit = 1 << index
+        assignments[key] = "validation" if validation_mask & bit else "test" if test_mask & bit else "train"
+    splits: dict[str, list[dict[str, Any]]] = {"train": [], "validation": [], "test": []}
+    for key, group_rows in groups.items():
+        splits[assignments[key]].extend(group_rows)
+    for split, values in splits.items():
+        values.sort(key=lambda row: stable_int(str(seed), split, candidate_id(row)))
+        split_counts = _split_family_counts(values, families)
+        absent = [family for family in families if not split_counts[family]]
+        if absent:
+            raise ValueError(f"{split} split is missing required families: {', '.join(absent)}")
+    return splits
+
+
 def chatml(prompt: str, lyrics: str) -> str:
     return (
         f"<|im_start|>system\n{SYSTEM_PROMPT}<|im_end|>\n"
@@ -241,26 +516,36 @@ def chatml(prompt: str, lyrics: str) -> str:
     )
 
 
-def training_record(row: dict[str, Any], split: str, min_score: float) -> dict[str, Any]:
+def training_record(
+    row: dict[str, Any],
+    split: str,
+    min_score: float,
+    *,
+    dataset_name: str = "qwen3_4b_12line_auto_calibrated_v2",
+    record_prefix: str = "auto-v2",
+) -> dict[str, Any]:
+    metadata = {
+        "source": dataset_name,
+        "source_bucket": "automated_consensus_keep",
+        "candidate_id": candidate_id(row),
+        "prompt_key": row.get("prompt_key"),
+        "theme": row.get("theme"),
+        "prompt_family": row.get("prompt_family"),
+        "split": split,
+        "target_line_count": 12,
+        "actual_line_count": 12,
+        "license_scope": row["source_provenance"]["license_scope"],
+        "normalized_text_sha256": row["source_provenance"]["normalized_text_sha256"],
+        "source_provenance": row["source_provenance"],
+        "automated_calibration": automated_calibration(row, min_score),
+        "format": "qwen_chatml_training_text",
+    }
+    if isinstance(row.get("selection_metadata"), dict):
+        metadata["selection"] = row["selection_metadata"]
     return {
-        "id": f"auto-v2-{candidate_id(row)}",
+        "id": f"{record_prefix}-{candidate_id(row)}",
         "training_text": chatml(str(row["prompt"]), str(row["lyrics"])),
-        "metadata": {
-            "source": "qwen3_4b_12line_auto_calibrated_v2",
-            "source_bucket": "automated_consensus_keep",
-            "candidate_id": candidate_id(row),
-            "prompt_key": row.get("prompt_key"),
-            "theme": row.get("theme"),
-            "prompt_family": row.get("prompt_family"),
-            "split": split,
-            "target_line_count": 12,
-            "actual_line_count": 12,
-            "license_scope": row["source_provenance"]["license_scope"],
-            "normalized_text_sha256": row["source_provenance"]["normalized_text_sha256"],
-            "source_provenance": row["source_provenance"],
-            "automated_calibration": automated_calibration(row, min_score),
-            "format": "qwen_chatml_training_text",
-        },
+        "metadata": metadata,
     }
 
 
@@ -271,6 +556,8 @@ def preference_pairs(
     *,
     margin: float,
     max_rejects: int,
+    dataset_name: str = "qwen3_4b_12line_auto_calibrated_v2",
+    record_prefix: str = "auto-pref-v2",
 ) -> list[dict[str, Any]]:
     by_prompt: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in all_rows:
@@ -298,12 +585,12 @@ def preference_pairs(
             seen.add(key)
             pairs.append(
                 {
-                    "id": f"auto-pref-v2-{key[0]}-{key[1]}",
+                    "id": f"{record_prefix}-{key[0]}-{key[1]}",
                     "prompt": chosen.get("prompt"),
                     "chosen": chosen.get("lyrics"),
                     "rejected": row.get("lyrics"),
                     "metadata": {
-                        "source": "qwen3_4b_12line_auto_calibrated_v2",
+                        "source": dataset_name,
                         "label_source": "automated_consensus_score_margin",
                         "criteria_version": CRITERIA_VERSION,
                         "prompt_key": chosen.get("prompt_key"),
@@ -320,22 +607,80 @@ def preference_pairs(
     return pairs
 
 
+def _sorted_counter(values: Iterable[str]) -> dict[str, int]:
+    return dict(sorted(Counter(values).items()))
+
+
+def distribution_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    dimensions: dict[str, dict[str, int]] = {}
+    for name in REQUIRED_DIMENSIONS:
+        dimensions[name] = _sorted_counter(
+            str(int(dimension_scores(row).get(name) or 0)) for row in rows
+        )
+
+    issue_tags: list[str] = []
+    for row in rows:
+        judge = row.get("judge") if isinstance(row.get("judge"), dict) else {}
+        tags = judge.get("issue_tags") if isinstance(judge.get("issue_tags"), list) else []
+        if tags:
+            issue_tags.extend(str(tag) for tag in tags)
+        else:
+            issue_tags.append(str(judge.get("main_issue") or "none"))
+    return {
+        "rows": len(rows),
+        "family": _sorted_counter(normalize(row.get("prompt_family")) or "unknown" for row in rows),
+        "theme": _sorted_counter(normalize(row.get("theme")) or "unknown" for row in rows),
+        "quality_tier": _sorted_counter(quality_tier(row) for row in rows),
+        "worst_dimension_score": _sorted_counter(str(worst_dimension_score(row)) for row in rows),
+        "dimensions": dimensions,
+        "issue_tag": _sorted_counter(issue_tags),
+    }
+
+
 def main() -> int:
     args = parse_args()
     if not 100 <= args.min_examples <= args.max_examples <= 300:
         raise ValueError("Require 100 <= min-examples <= max-examples <= 300")
+    family_quotas = {
+        family: int(getattr(args, f"{family}_quota"))
+        for family in BALANCED_FAMILIES
+    }
+    if args.dataset_version == "v3":
+        if any(quota <= 0 for quota in family_quotas.values()):
+            raise ValueError("All v3 family quotas must be positive")
+        selected_count = sum(family_quotas.values())
+        if not args.min_examples <= selected_count <= args.max_examples:
+            raise ValueError(
+                "The sum of v3 family quotas must fall between --min-examples and --max-examples"
+            )
     judged = read_jsonl(args.judged)
     raw_rows = read_jsonl(args.raw_generations)
     raw_by_id = {candidate_id(row): row for row in raw_rows}
     summary = json.loads(args.generation_summary.read_text(encoding="utf-8"))
     eligible = [row for row in judged if consensus_eligible(row, args.min_calibrated_score)]
-    eligible.sort(key=lambda row: (score(row), candidate_id(row)), reverse=True)
+    duplicate_rows_removed = 0
+    if args.dataset_version == "v3":
+        selected = select_balanced_examples(eligible, family_quotas)
+    else:
+        eligible.sort(key=lambda row: (score(row), candidate_id(row)), reverse=True)
+        selected = []
+        seen_texts: set[str] = set()
+        for row in eligible:
+            text_hash = normalized_sha256(row.get("lyrics"))
+            if text_hash in seen_texts:
+                duplicate_rows_removed += 1
+                continue
+            selected.append(row)
+            seen_texts.add(text_hash)
+            if len(selected) >= args.max_examples:
+                break
+        if len(selected) < args.min_examples:
+            raise SystemExit(
+                f"Only {len(selected)} automated-consensus examples passed; minimum is {args.min_examples}"
+            )
+
     unique: list[dict[str, Any]] = []
-    seen_texts: set[str] = set()
-    for row in eligible:
-        text_hash = normalized_sha256(row.get("lyrics"))
-        if text_hash in seen_texts:
-            continue
+    for row in selected:
         raw = raw_by_id.get(candidate_id(row))
         if raw is None:
             raise ValueError(f"Missing raw provenance for {candidate_id(row)}")
@@ -349,18 +694,29 @@ def main() -> int:
             summary=summary,
         )
         unique.append(copied)
-        seen_texts.add(text_hash)
-        if len(unique) >= args.max_examples:
-            break
-    if len(unique) < args.min_examples:
-        raise SystemExit(f"Only {len(unique)} automated-consensus examples passed; minimum is {args.min_examples}")
+    ensure_unique_lyrics(unique)
 
-    splits = split_theme_groups(unique, args.seed)
+    splits = (
+        split_balanced_theme_groups(unique, args.seed)
+        if args.dataset_version == "v3"
+        else split_theme_groups(unique, args.seed)
+    )
+    dataset_name = f"qwen3_4b_12line_auto_calibrated_{args.dataset_version}"
+    record_prefix = f"auto-{args.dataset_version}"
     split_by_candidate = {
         candidate_id(row): split for split, rows in splits.items() for row in rows
     }
     records = {
-        split: [training_record(row, split, args.min_calibrated_score) for row in rows]
+        split: [
+            training_record(
+                row,
+                split,
+                args.min_calibrated_score,
+                dataset_name=dataset_name,
+                record_prefix=record_prefix,
+            )
+            for row in rows
+        ]
         for split, rows in splits.items()
     }
     pairs = preference_pairs(
@@ -369,6 +725,8 @@ def main() -> int:
         split_by_candidate,
         margin=args.preference_margin,
         max_rejects=args.max_rejects_per_chosen,
+        dataset_name=dataset_name,
+        record_prefix=f"auto-pref-{args.dataset_version}",
     )
     if not pairs:
         raise SystemExit("No preference pairs passed the automated score-margin gate")
@@ -384,18 +742,27 @@ def main() -> int:
         split: {normalize(row.get("theme")) for row in rows if row.get("theme")}
         for split, rows in splits.items()
     }
+    split_families = {
+        split: _split_family_counts(rows, BALANCED_FAMILIES)
+        for split, rows in splits.items()
+    }
     manifest = {
-        "name": "qwen3_4b_12line_auto_calibrated_v2",
+        "name": dataset_name,
         "status": "training_ready",
         "label_policy": "automated_consensus_no_human_review",
         "human_review_deprecated": True,
         "criteria_version": CRITERIA_VERSION,
+        "dataset_version": args.dataset_version,
+        "selection_policy": (
+            "balanced_family_quality_tiers" if args.dataset_version == "v3" else "legacy_calibrated_score"
+        ),
         "seed": args.seed,
         "thresholds": {
             "min_calibrated_score": args.min_calibrated_score,
             "required_dimension_minimums": REQUIRED_DIMENSIONS,
             "preference_margin": args.preference_margin,
             "max_rejects_per_chosen": args.max_rejects_per_chosen,
+            "family_quotas": family_quotas if args.dataset_version == "v3" else None,
         },
         "source_inputs": {
             "judged": {"path": str(args.judged), "sha256": sha256_file(args.judged)},
@@ -406,6 +773,7 @@ def main() -> int:
             "judged_rows": len(judged),
             "eligible_before_dedup": len(eligible),
             "automated_consensus_unique": len(unique),
+            "duplicate_rows_removed": duplicate_rows_removed,
             "train_rows": len(records["train"]),
             "validation_rows": len(records["validation"]),
             "test_rows": len(records["test"]),
@@ -417,6 +785,20 @@ def main() -> int:
             "train_validation": len(split_themes["train"] & split_themes["validation"]),
             "train_test": len(split_themes["train"] & split_themes["test"]),
             "validation_test": len(split_themes["validation"] & split_themes["test"]),
+        },
+        "family_presence_by_split": {
+            split: {
+                family: int(split_families[split][family])
+                for family in BALANCED_FAMILIES
+            }
+            for split in ("train", "validation", "test")
+        },
+        "distributions": {
+            "selected": distribution_summary(unique),
+            "split": {
+                split: distribution_summary(rows)
+                for split, rows in splits.items()
+            },
         },
         "judge_issue_counts": dict(Counter(str((row.get("judge") or {}).get("main_issue")) for row in unique)),
         "paths": {key: str(path) for key, path in paths.items()},

@@ -1,0 +1,51 @@
+{
+  "source": "data/model_ready/rap_lyrics_training_dataset.parquet",
+  "output_dir": "model/data_hybrid_verses",
+  "split": {
+    "train": 0.98,
+    "validation": 0.01,
+    "test": 0.01
+  },
+  "random_seed": 42,
+  "architecture_seed_path": "model/configs/lyrical_architecture_seeds.json",
+  "verse_section_source": "model/data/full_verse_sections.parquet",
+  "section_verse_min_bars": 10,
+  "section_verse_max_bars": 25,
+  "max_section_verse_examples": 120000,
+  "max_general_vibe_section_examples": 25000,
+  "section_theme_min_confidence": "medium",
+  "section_theme_repeat_counts": {
+    "general_vibe": 1,
+    "late nights, pressure, ambition, city lights": 4,
+    "reflection, growth, struggle, self-doubt": 2,
+    "money, flexing, status, success": 2,
+    "heartbreak, loneliness, memory, emotional conflict": 3,
+    "street survival, danger, loyalty, paranoia": 1,
+    "party, drugs, energy, nightlife": 1
+  },
+  "include_corpus_verse_chunks": false,
+  "include_corpus_song_examples": false,
+  "include_corpus_continuation_examples": false,
+  "strict_verse_artifact_filter": true,
+  "tasks": [
+    "generate_verse",
+    "generate_clean_scene_verse"
+  ],
+  "theme_keyword_count": 8,
+  "min_theme_keyword_matches": 0,
+  "max_words_per_bar": 9,
+  "max_avg_words_per_bar": 11,
+  "hard_max_words_per_bar": 16,
+  "max_long_bar_ratio": 0.25,
+  "clean_scene_line_count": 12,
+  "max_clean_scene_examples_per_song": 1,
+  "min_clean_scene_keyword_hits": 5,
+  "min_unique_clean_scene_keywords": 2,
+  "min_clean_scene_work_anchor_hits": 2,
+  "min_unique_clean_scene_work_anchors": 2,
+  "max_clean_scene_soft_drift_count": 0,
+  "max_clean_scene_adlib_count": 0,
+  "task_repeat_counts": {
+    "generate_clean_scene_verse": 20
+  }
+}

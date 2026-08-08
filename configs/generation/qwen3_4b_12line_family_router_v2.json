@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "qwen3_4b_12line_family_router_v2",
+  "base_model": "Qwen/Qwen3-4B",
+  "routes": {
+    "melodic": {
+      "prompt_families": ["focused_12line_melodic"],
+      "adapter_dir": "model/artifacts/qwen3-4b-12line-section-v41-e1-lr2e5-s20260712"
+    },
+    "story": {
+      "prompt_families": ["focused_12line_story"],
+      "adapter_dir": "model/artifacts/qwen3-4b-12line-auto-v3-e1-lr2e5-s20260712"
+    },
+    "technical": {
+      "prompt_families": ["focused_12line_technical"],
+      "adapter_dir": "model/artifacts/qwen3-4b-12line-section-v4-e1-lr2e5-s20260712"
+    },
+    "clean": {
+      "prompt_families": ["focused_12line_clean"],
+      "adapter_dir": "model/artifacts/qwen3-4b-12line-section-v4-v41-interp-w50"
+    }
+  }
+}

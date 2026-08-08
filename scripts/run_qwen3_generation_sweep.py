@@ -1,6 +1,6 @@
-"""Run a local batched Qwen3-4B generation sweep.
+"""Run a local batched causal-LM generation sweep.
 
-The sweep can use a local Qwen3-4B LoRA adapter or the base model alone,
+The sweep can use a supported local LoRA adapter or the base model alone,
 writes raw and postprocessed outputs, and does not call OpenAI or any external
 judge.
 """
@@ -20,8 +20,23 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
+
+from rap_song_data.evaluation.fixed_generation import (
+    generation_eos_token_ids,
+    generation_pad_token_id,
+)
+
 
 BASE_MODEL = "Qwen/Qwen3-4B"
+SUPPORTED_BASE_MODELS = {
+    BASE_MODEL,
+    "Qwen/Qwen3-14B",
+    "allenai/Olmo-3-7B-Instruct",
+}
 DEFAULT_MODEL_REVISION = "1cfa9a7208912126459214e8b04321603b3df60c"
 DEFAULT_ADAPTER = Path("model/artifacts/stage2-qwen3-4b-cleaned-chunks-512-60m")
 OUTPUT_PROMPT_METADATA_KEYS = (
@@ -445,14 +460,22 @@ def is_oom(exc: BaseException) -> bool:
     return "out of memory" in text or "cublas_status_alloc_failed" in text
 
 
-def generation_finish_metadata(generated_ids: Any, tokenizer: Any, max_new_tokens: int) -> dict[str, Any]:
+def generation_finish_metadata(
+    generated_ids: Any,
+    tokenizer: Any,
+    max_new_tokens: int,
+    configured_eos_token_ids: int | list[int] | None = None,
+) -> dict[str, Any]:
     token_ids = [int(token_id) for token_id in generated_ids.detach().cpu().tolist()]
     eos_token_ids = set()
-    if tokenizer.eos_token_id is not None:
-        if isinstance(tokenizer.eos_token_id, list):
-            eos_token_ids.update(int(token_id) for token_id in tokenizer.eos_token_id)
+    configured = configured_eos_token_ids
+    if configured is None:
+        configured = tokenizer.eos_token_id
+    if configured is not None:
+        if isinstance(configured, list):
+            eos_token_ids.update(int(token_id) for token_id in configured)
         else:
-            eos_token_ids.add(int(tokenizer.eos_token_id))
+            eos_token_ids.add(int(configured))
     first_eos_index = next((index for index, token_id in enumerate(token_ids) if token_id in eos_token_ids), None)
     hit_eos = first_eos_index is not None
     generated_token_count = len(token_ids)
@@ -479,8 +502,11 @@ def decode_content_before_eos(generated_ids: Any, tokenizer: Any, finish: dict[s
 
 def main() -> None:
     args = parse_args()
-    if args.base_model != BASE_MODEL:
-        raise SystemExit("This sweep runner is locked to Qwen/Qwen3-4B.")
+    if args.base_model not in SUPPORTED_BASE_MODELS:
+        raise SystemExit(
+            f"Unsupported base model {args.base_model!r}; supported models: "
+            f"{sorted(SUPPORTED_BASE_MODELS)}"
+        )
     if args.adapter and not args.adapter_dir.exists():
         raise FileNotFoundError(f"Adapter not found: {args.adapter_dir}")
     if args.underlength_retries < 0:
@@ -591,6 +617,8 @@ def main() -> None:
         model = PeftModel.from_pretrained(model, args.adapter_dir)
     model.config.use_cache = True
     model.eval()
+    eos_token_ids = generation_eos_token_ids(model, tokenizer)
+    pad_token_id = generation_pad_token_id(tokenizer)
     bad_words = blocked_phrase_ids(tokenizer, block_slurs=args.block_slurs)
     torch.cuda.synchronize()
     load_seconds = time.perf_counter() - load_started
@@ -661,8 +689,8 @@ def main() -> None:
                 repetition_penalty=args.repetition_penalty,
                 no_repeat_ngram_size=args.no_repeat_ngram_size,
                 bad_words_ids=bad_words,
-                pad_token_id=tokenizer.eos_token_id,
-                eos_token_id=tokenizer.eos_token_id,
+                pad_token_id=pad_token_id,
+                eos_token_id=eos_token_ids,
             )
         torch.cuda.synchronize()
         return output_ids, inputs["input_ids"].shape[1], time.perf_counter() - batch_started
@@ -679,7 +707,12 @@ def main() -> None:
         batch_row_count: int,
     ) -> dict[str, Any]:
         generated_ids = output[input_width:]
-        finish = generation_finish_metadata(generated_ids, tokenizer, args.max_new_tokens)
+        finish = generation_finish_metadata(
+            generated_ids,
+            tokenizer,
+            args.max_new_tokens,
+            configured_eos_token_ids=eos_token_ids,
+        )
         raw_text, raw_text_with_special = decode_content_before_eos(generated_ids, tokenizer, finish)
         target_line_count = requested_line_count(row["prompt"]) if args.enforce_target_line_count else None
         cleaned, actions = postprocess_text(raw_text, target_line_count=target_line_count)

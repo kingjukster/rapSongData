@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "status": "revoked_after_confirmation",
+  "promoted_at": "2026-07-13",
+  "name": "qwen3_4b_12line_family_router_v2",
+  "use_as_default": false,
+  "fallback_model": "Qwen/Qwen3-4B",
+  "router_config": "configs/generation/qwen3_4b_12line_family_router_v2.json",
+  "base_model": "Qwen/Qwen3-4B",
+  "promotion_profile": "promotion",
+  "promotion_gate": "runs/qwen3_4b_12line_family_router_v2/promotion_combined/gate.json",
+  "promotion_gate_sha256": "42ef3117374be6b8572b91840e8977c52873623d3334c7c07ab80bbc40c7d1bd",
+  "selection_evidence": {
+    "prompts": "configs/prompts/qwen3_4b_12line_expanded_eval_prompts.json",
+    "prompt_count": 60,
+    "exact_line_match_count": 60,
+    "hard_failure_count": 0,
+    "average_quality_delta": 0.02359,
+    "paired_wins": 36,
+    "family_quality_deltas": {
+      "melodic": 0.03678,
+      "story": 0.027793,
+      "technical": 0.021447,
+      "clean": 0.00834
+    }
+  },
+  "confirmation": {
+    "status": "failed",
+    "profile": "confirmation",
+    "prompts": "configs/prompts/qwen3_4b_12line_router_confirmation_prompts.json",
+    "prompt_count": 24,
+    "gate": "runs/qwen3_4b_12line_family_router_v2/confirmation_combined/gate.json",
+    "gate_sha256": "1e5abfe1a488b733039625f0411d7011c36d01efeb3a66cbc1d2b413458a50af",
+    "average_quality_delta": 0.001254,
+    "paired_wins": 11,
+    "failed_gates": ["average_quality_delta", "family_quality_floor", "paired_wins"],
+    "family_quality_deltas": {
+      "melodic": 0.001133,
+      "story": -0.017183,
+      "technical": 0.033317,
+      "clean": -0.01225
+    }
+  }
+}

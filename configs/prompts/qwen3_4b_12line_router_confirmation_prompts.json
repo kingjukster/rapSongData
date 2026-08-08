@@ -1,0 +1,170 @@
+[
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about carrying groceries upstairs during a neighborhood blackout. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "carrying groceries upstairs during a neighborhood blackout",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about carrying groceries upstairs during a neighborhood blackout. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "carrying groceries upstairs during a neighborhood blackout",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about carrying groceries upstairs during a neighborhood blackout. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "carrying groceries upstairs during a neighborhood blackout",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about carrying groceries upstairs during a neighborhood blackout. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "carrying groceries upstairs during a neighborhood blackout",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about finding an old notebook while clearing a flooded basement. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "finding an old notebook while clearing a flooded basement",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about finding an old notebook while clearing a flooded basement. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "finding an old notebook while clearing a flooded basement",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about finding an old notebook while clearing a flooded basement. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "finding an old notebook while clearing a flooded basement",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about finding an old notebook while clearing a flooded basement. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "finding an old notebook while clearing a flooded basement",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about returning a lost wallet when rent is overdue. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "returning a lost wallet when rent is overdue",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about returning a lost wallet when rent is overdue. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "returning a lost wallet when rent is overdue",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about returning a lost wallet when rent is overdue. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "returning a lost wallet when rent is overdue",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about returning a lost wallet when rent is overdue. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "returning a lost wallet when rent is overdue",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing a bicycle before a younger cousin's first race. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle before a younger cousin's first race",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing a bicycle before a younger cousin's first race. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle before a younger cousin's first race",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing a bicycle before a younger cousin's first race. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle before a younger cousin's first race",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about repairing a bicycle before a younger cousin's first race. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle before a younger cousin's first race",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about watching sunrise from a laundromat after a sleepless night. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "watching sunrise from a laundromat after a sleepless night",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about watching sunrise from a laundromat after a sleepless night. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "watching sunrise from a laundromat after a sleepless night",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about watching sunrise from a laundromat after a sleepless night. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "watching sunrise from a laundromat after a sleepless night",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about watching sunrise from a laundromat after a sleepless night. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "watching sunrise from a laundromat after a sleepless night",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about defending a quiet teammate during a tense rehearsal. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "defending a quiet teammate during a tense rehearsal",
+    "style": "melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about defending a quiet teammate during a tense rehearsal. Make every line move the same scene forward. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "defending a quiet teammate during a tense rehearsal",
+    "style": "gritty scene-driven storytelling",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_story"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about defending a quiet teammate during a tense rehearsal. Use internal rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "defending a quiet teammate during a tense rehearsal",
+    "style": "technical internal rhyme with clear meaning",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of clean, radio-safe original rap lyrics about defending a quiet teammate during a tense rehearsal. Avoid profanity and slurs. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "defending a quiet teammate during a tense rehearsal",
+    "style": "clean radio-safe phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_clean"
+  }
+]

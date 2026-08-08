@@ -837,7 +837,9 @@ def _profile_record_split(row: dict[str, Any], *, seed: int) -> str:
     return "train"
 
 
-def _training_row_from_source(row: dict[str, Any], *, profile: str, seed: int) -> tuple[dict[str, Any] | None, str | None]:
+def _training_row_from_source(
+    row: dict[str, Any], *, profile: str, seed: int, source_id: str | None = None
+) -> tuple[dict[str, Any] | None, str | None]:
     lyrics = str(row.get("lyrics") or row.get("text") or "").strip()
     title = str(row.get("title") or "").strip()
     if not lyrics:
@@ -846,22 +848,33 @@ def _training_row_from_source(row: dict[str, Any], *, profile: str, seed: int) -
         return None, "missing_title"
     flags = list(row.get("content_flags") or content_flags(lyrics))
     split = str(row.get("split") or _profile_record_split(row, seed=seed))
+    resolved_source_id = str(row.get("source_id") or source_id or "unknown")
+    source_item_id = str(row.get("source_item_id") or row.get("id") or row.get("work_id") or "")
+    year_value = row.get("year", row.get("issued"))
+    year = str(year_value).strip() if year_value is not None and str(year_value).strip() else "<YEAR_UNKNOWN>"
     materialized = {
-        **row,
         "schema_version": 2,
         "profile": profile,
         "split": split,
         "title": title,
-        "year": row.get("year", row.get("issued")),
+        "year": year,
         "lyrics": lyrics,
         "content_flags": flags,
         "line_count": int(row.get("line_count") or len([line for line in lyrics.splitlines() if line.strip()])),
-        "source_id": row.get("source_id"),
-        "source_item_id": row.get("source_item_id"),
+        "source_id": resolved_source_id,
+        "source_item_id": source_item_id,
         "record_id": row.get("record_id") or hash_text(
-            f"{row.get('source_id')}:{row.get('source_item_id')}:{title}:{lyrics[:128]}",
+            f"{resolved_source_id}:{source_item_id}:{title}:{lyrics[:128]}",
             digest_size=16,
         ),
+        "artist_clean": str(row.get("artist_clean") or row.get("artist") or ""),
+        "artist_hash": str(row.get("artist_hash") or ""),
+        "language_disagreement": bool(row.get("language_disagreement") or False),
+        "language_labels": list(row.get("language_labels") or []),
+        "section_tokens": list(row.get("section_tokens") or []),
+        "source_license": str(row.get("source_license") or row.get("license") or "unknown"),
+        "private_research_only": True,
+        "public_release_blocked": True,
     }
     materialized["base_text"] = str(row.get("base_text") or base_document(title, materialized["year"], lyrics))
     materialized["sft_text"] = str(row.get("sft_text") or sft_document(title, materialized["year"], lyrics, flags))
@@ -935,7 +948,9 @@ def materialize_profile(args: argparse.Namespace) -> dict[str, Any]:
                     if args.limit is not None and counters["input_records"] >= args.limit:
                         break
                     counters["input_records"] += 1
-                    materialized, reason = _training_row_from_source(row, profile=args.profile, seed=args.seed)
+                    materialized, reason = _training_row_from_source(
+                        row, profile=args.profile, seed=args.seed, source_id=source_id
+                    )
                     if materialized is None:
                         counters[f"rejected_{reason}"] += 1
                         _write_row(

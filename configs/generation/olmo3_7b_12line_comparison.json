@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "name": "olmo3_7b_12line_base_comparison",
+  "status": "calibration_only",
+  "base_model": "allenai/Olmo-3-7B-Instruct",
+  "model_revision": "6e5971d9eba42665f5bd5a0fcf047f299ce1dccc",
+  "quantization": "4bit_nf4_bf16_double_quant",
+  "prompts": "configs/prompts/qwen3_4b_12line_v5_confirmation_prompts.json",
+  "comparison_base_ranked": "runs/qwen3_4b_12line_section_v5/smoke_confirmation_base/quality_ranked.jsonl",
+  "settings": {
+    "temperature": 0.82,
+    "top_p": 0.9,
+    "top_k": 50,
+    "repetition_penalty": 1.16,
+    "no_repeat_ngram_size": 5,
+    "max_new_tokens": 320,
+    "seed": 42,
+    "block_slurs": true,
+    "trim_to_requested_line_count": true
+  },
+  "staging": {
+    "smoke_prompt_count": 2,
+    "weak_family_prompt_count": 12,
+    "run_full_confirmation_only_if_weak_family_gate_passes": true
+  }
+}

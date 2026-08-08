@@ -1,0 +1,86 @@
+[
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing a bicycle chain beneath an apartment stairwell. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle chain beneath an apartment stairwell",
+    "style": "Use melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about repairing a bicycle chain beneath an apartment stairwell. Use internal and multisyllabic rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "repairing a bicycle chain beneath an apartment stairwell",
+    "style": "Use internal and multisyllabic rhymes, but keep the meaning clear",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about waiting in a laundromat while a thunderstorm floods the street. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "waiting in a laundromat while a thunderstorm floods the street",
+    "style": "Use melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about waiting in a laundromat while a thunderstorm floods the street. Use internal and multisyllabic rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "waiting in a laundromat while a thunderstorm floods the street",
+    "style": "Use internal and multisyllabic rhymes, but keep the meaning clear",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about delivering a birthday cake across town on a crowded bus. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "delivering a birthday cake across town on a crowded bus",
+    "style": "Use melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about delivering a birthday cake across town on a crowded bus. Use internal and multisyllabic rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "delivering a birthday cake across town on a crowded bus",
+    "style": "Use internal and multisyllabic rhymes, but keep the meaning clear",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about finding a stray dog beside a closed gas station at dawn. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "finding a stray dog beside a closed gas station at dawn",
+    "style": "Use melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about finding a stray dog beside a closed gas station at dawn. Use internal and multisyllabic rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "finding a stray dog beside a closed gas station at dawn",
+    "style": "Use internal and multisyllabic rhymes, but keep the meaning clear",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about helping a neighbor move furniture before an eviction deadline. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "helping a neighbor move furniture before an eviction deadline",
+    "style": "Use melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about helping a neighbor move furniture before an eviction deadline. Use internal and multisyllabic rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "helping a neighbor move furniture before an eviction deadline",
+    "style": "Use internal and multisyllabic rhymes, but keep the meaning clear",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about returning a borrowed camera after discovering undeveloped film. Use melodic but compact phrasing. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "returning a borrowed camera after discovering undeveloped film",
+    "style": "Use melodic but compact phrasing",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_melodic"
+  },
+  {
+    "prompt": "Write exactly 12 lines of original rap lyrics about returning a borrowed camera after discovering undeveloped film. Use internal and multisyllabic rhymes, but keep the meaning clear. Keep the ending complete and declarative. No intro, no commentary.",
+    "theme": "returning a borrowed camera after discovering undeveloped film",
+    "style": "Use internal and multisyllabic rhymes, but keep the meaning clear",
+    "target_line_count": 12,
+    "prompt_family": "focused_12line_technical"
+  }
+]

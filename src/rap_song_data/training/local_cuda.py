@@ -8,6 +8,7 @@ to ``model/artifacts``.
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import hashlib
 import inspect
 import hashlib
@@ -228,6 +229,25 @@ def resolve_max_steps(training_cfg: dict[str, Any]) -> int | None:
         return None
     steps = int(value)
     return steps if steps > 0 else None
+
+
+def filter_training_args_for_signature(
+    training_args_kwargs: dict[str, Any],
+    parameters: Any,
+) -> dict[str, Any]:
+    """Normalize renamed arguments, then retain only supported parameters."""
+    normalized = dict(training_args_kwargs)
+    if "eval_strategy" not in parameters and "evaluation_strategy" in parameters:
+        normalized["evaluation_strategy"] = normalized.pop("eval_strategy")
+    if "train_sampling_strategy" in parameters and "group_by_length" in normalized:
+        normalized["train_sampling_strategy"] = (
+            "group_by_length" if bool(normalized.pop("group_by_length")) else "random"
+        )
+    return {
+        key: value
+        for key, value in normalized.items()
+        if key in parameters
+    }
 
 
 def dataset_selection_cache_metadata(training_cfg: dict[str, Any]) -> dict[str, Any]:
@@ -552,7 +572,8 @@ def emit_policy_warnings(training_cfg: dict[str, Any], dataset_cfg: dict[str, An
         )
     if gradient_accumulation_steps <= 4:
         warnings.append(
-            "gradient_accumulation_steps=4 is being used for faster iteration; for strict comparability, "
+            f"gradient_accumulation_steps={gradient_accumulation_steps} is being used for faster iteration; "
+            "for strict comparability, "
             "prefer a higher accumulation setting (8)."
         )
     if dataset_cfg.get("format") == "text" and "chunked" in str(dataset_cfg.get("train_path", "")):
@@ -605,7 +626,7 @@ def write_run_summary(
             "text_field": dataset_cfg.get("text_field", "training_text"),
         },
         "training": {
-            "max_steps": int(training_cfg["max_steps"]),
+            "max_steps": resolve_max_steps(training_cfg),
             "sequence_length": int(training_cfg["sequence_length"]),
             "per_device_train_batch_size": int(training_cfg["per_device_train_batch_size"]),
             "gradient_accumulation_steps": int(training_cfg["gradient_accumulation_steps"]),
@@ -1041,13 +1062,7 @@ def main() -> None:
         if optional_key in training_cfg:
             training_args_kwargs[optional_key] = training_cfg[optional_key]
     parameters = inspect.signature(TrainingArguments.__init__).parameters
-    if "eval_strategy" not in parameters and "evaluation_strategy" in parameters:
-        training_args_kwargs["evaluation_strategy"] = training_args_kwargs.pop("eval_strategy")
-    training_args_kwargs = {
-        key: value
-        for key, value in training_args_kwargs.items()
-        if key in parameters
-    }
+    training_args_kwargs = filter_training_args_for_signature(training_args_kwargs, parameters)
     if "save_only_model" in parameters:
         training_args_kwargs["save_only_model"] = True
 

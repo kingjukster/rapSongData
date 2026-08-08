@@ -16,6 +16,33 @@ def read_jsonl(path: Path) -> list[dict]:
 
 
 class Qwen3SweepPackagingTests(unittest.TestCase):
+    def test_supported_models_include_qwen_and_olmo(self):
+        from scripts.run_qwen3_generation_sweep import SUPPORTED_BASE_MODELS
+
+        self.assertIn("Qwen/Qwen3-4B", SUPPORTED_BASE_MODELS)
+        self.assertIn("allenai/Olmo-3-7B-Instruct", SUPPORTED_BASE_MODELS)
+
+    def test_finish_metadata_honors_model_specific_multi_eos(self):
+        from types import SimpleNamespace
+
+        from scripts.run_qwen3_generation_sweep import generation_finish_metadata
+
+        class FakeIds:
+            def detach(self):
+                return self
+
+            def cpu(self):
+                return self
+
+            def tolist(self):
+                return [10, 100265, 100257]
+
+        finish = generation_finish_metadata(
+            FakeIds(), SimpleNamespace(eos_token_id=100257), 320, [100265, 100257]
+        )
+        self.assertTrue(finish["hit_eos"])
+        self.assertEqual(finish["first_eos_token_index"], 1)
+
     def test_expanded_eval_prompt_builder_outputs_unique_12line_prompts(self):
         from scripts.build_qwen3_eval_prompts import build_prompts
 

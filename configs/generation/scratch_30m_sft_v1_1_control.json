@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "private_research_only": true,
+  "public_release_blocked": true,
+  "system_name": "scratch-30m-sft-v1.1-control",
+  "model_release": "model/releases/scratch-30m-sft-v1",
+  "prompt_protocol": "scratch-structured-v1",
+  "decoding": {
+    "temperature": 0.9,
+    "top_p": 0.95,
+    "repetition_penalty": 1.06,
+    "do_sample": true,
+    "use_cache": true
+  },
+  "token_budget": {
+    "mode": "requested-line-adjusted",
+    "minimum_new_tokens": 64,
+    "tokens_per_requested_line": 18,
+    "configured_maximum_new_tokens": 576,
+    "hard_cap": "remaining positions inside the 512-token model context"
+  },
+  "line_control": {
+    "ignore_leading_blank_lines": true,
+    "exclude_section_labels": true,
+    "exclude_prompt_leakage_tokens": true,
+    "stop_after_complete_requested_line_count": true,
+    "remove_trailing_blank_lines": true
+  },
+  "retry": {
+    "underlength_retries": 1,
+    "tokens_per_requested_line": 24,
+    "configured_maximum_new_tokens": 768,
+    "hard_cap": "remaining positions inside the 512-token model context",
+    "accept_retry_only_when_line-count error decreases": true
+  },
+  "selection_evidence": {
+    "report": "model/reports/scratch-30m-decoding-sweep-v2/sweep_report.json",
+    "sample_count": 80,
+    "system_exact_line_rate": 0.7375,
+    "average_repeated_line_ratio": 0.2278,
+    "distinct_3": 0.7649,
+    "truncation_rate": 0.025,
+    "status": "experimental_not_promoted"
+  }
+}

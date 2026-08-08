@@ -1,0 +1,44 @@
+{
+  "base_model": "Qwen/Qwen2.5-7B-Instruct",
+  "output_dir": "model/artifacts/qwen2.5-7b-rap-lora-cleaned-chunks-768-ga4-full-epoch",
+  "add_structural_special_tokens": false,
+  "dataset": {
+    "train_path": "data/cleaned/chunked/categorized_rap_corpus_train_chunks.txt",
+    "validation_path": "data/cleaned/chunked/categorized_rap_corpus_validation_chunks.txt",
+    "text_field": "text",
+    "format": "text",
+    "cleaning_summary_path": "data/cleaned/corpus_cleaning_summary.json",
+    "cleaning_report_path": "reports/corpus_cleaning_report.md",
+    "cleaning_report_summary_path": "reports/corpus_cleaning_summary.json",
+    "chunk_manifest_path": "data/cleaned/chunked/cleaned_chunk_manifest.json"
+  },
+  "training": {
+    "max_steps": 48133,
+    "num_train_epochs": 1,
+    "learning_rate": 0.0002,
+    "sequence_length": 768,
+    "per_device_train_batch_size": 1,
+    "gradient_accumulation_steps": 4,
+    "lora_rank": 16,
+    "lora_alpha": 32,
+    "lora_dropout": 0.05,
+    "tokenize_num_proc": 6,
+    "dataloader_num_workers": 0,
+    "timing_log_steps": 100,
+    "save_steps": 1000,
+    "save_total_limit": 3,
+    "gradient_checkpointing": true,
+    "gradient_checkpointing_kwargs": {
+      "use_reentrant": false
+    },
+    "bf16": true,
+    "load_in_4bit": true,
+    "allow_tf32": true,
+    "float32_matmul_precision": "high",
+    "cudnn_benchmark": true,
+    "attn_implementation": "sdpa",
+    "enable_flash_sdp": true,
+    "enable_mem_efficient_sdp": true,
+    "optim": "paged_adamw_8bit"
+  }
+}

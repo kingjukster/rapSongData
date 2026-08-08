@@ -125,7 +125,7 @@ def cuda_snapshot(torch: Any) -> dict[str, Any]:
     }
 
 
-def create_model(tokenizer: Any, *, tiny: bool = False):
+def create_model(tokenizer: Any, *, tiny: bool = False, model_spec: ScratchModelSpec | None = None):
     from transformers import LlamaForCausalLM
 
     if tiny:
@@ -138,6 +138,8 @@ def create_model(tokenizer: Any, *, tiny: bool = False):
             num_key_value_heads=2,
             max_position_embeddings=512,
         )
+    elif model_spec is not None:
+        spec = ScratchModelSpec.from_mapping({**model_spec.to_dict(), "vocab_size": len(tokenizer)})
     else:
         spec = ScratchModelSpec(vocab_size=len(tokenizer))
     model = LlamaForCausalLM(spec.build_config())
@@ -230,6 +232,10 @@ def train(args: argparse.Namespace, *, mode: str) -> dict[str, Any]:
     started = time.monotonic()
     started_at = utc_now()
     spec = TrainingSpec.from_json(Path(args.config) if args.config else None, mode=mode)
+    configured_model_spec: ScratchModelSpec | None = None
+    if args.config:
+        config_payload = read_json(Path(args.config))
+        configured_model_spec = ScratchModelSpec.from_mapping(config_payload.get("model"))
     if args.smoke:
         spec.max_hours = min(spec.max_hours, 0.25)
         spec.eval_every_steps = min(spec.eval_every_steps, 10)
@@ -288,7 +294,7 @@ def train(args: argparse.Namespace, *, mode: str) -> dict[str, Any]:
         model = AutoModelForCausalLM.from_pretrained(args.model_dir)
         model_spec = {"base_checkpoint": str(args.model_dir)}
     else:
-        model, scratch_spec = create_model(tokenizer, tiny=args.tiny_model)
+        model, scratch_spec = create_model(tokenizer, tiny=args.tiny_model, model_spec=configured_model_spec)
         model_spec = scratch_spec.to_dict()
     model.config.use_cache = False
     if spec.gradient_checkpointing:
