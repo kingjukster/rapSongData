@@ -42,6 +42,13 @@ venv/
 /data/corpus_lake/
 /data/scratch/
 /data/scratch/catalog/
+/data/labels/
+/data/manifests/
+/data/openai_batch/
+/data/review_pool/
+/data/reviews/
+/data/section_mining/
+/data/source_sections/
 
 # Generated reports, experiment runs, and historical evidence snapshots
 /reports/
@@ -63,9 +70,12 @@ venv/
 /model/tensorboard/
 /model/tmp_adapter_check/
 /model/wandb/
+/model/cache/
+/model/releases/
 
 # Runtime files
 logs/
+tmp/
 *.log
 *.err
 *.pid
